@@ -43,6 +43,8 @@ jobs:
       - name: Generate Prisma Client
         working-directory: ./backend
         run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
 
       - name: Backend TypeScript type check
         working-directory: ./backend
