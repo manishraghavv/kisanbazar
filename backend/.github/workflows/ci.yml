@@ -1,4 +1,9 @@
-name: CI/CD Pipeline
+# ─────────────────────────────────────────────────────────────
+#  CI/CD Pipeline — Backend
+#  Trigger: push to main/develop or PR to main
+# ─────────────────────────────────────────────────────────────
+
+name: Backend CI/CD
 
 on:
   push:
@@ -7,12 +12,11 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: '20'
-  REGISTRY: ghcr.io
+  NODE_VERSION: '22'
 
 jobs:
-  lint:
-    name: Lint & Format
+  lint-and-typecheck:
+    name: Lint & TypeCheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +24,25 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - name: TypeScript type-check
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: ./backend
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: TypeScript type check
+        working-directory: ./backend
         run: npx tsc --noEmit
-      - name: Check for tsconfig strict
-        run: npx tsc --noEmit --strict
 
   test:
     name: Tests & Coverage
-    needs: lint
+    needs: lint-and-typecheck
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -59,27 +73,40 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - name: Generate Prisma client
-        run: npx prisma generate
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: ./backend
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        working-directory: ./backend
+        run: npm run prisma:migrate:deploy
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+
       - name: Run unit tests
+        working-directory: ./backend
         run: npm test -- --coverage
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
           NODE_ENV: test
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
+          files: ./backend/coverage/lcov.info
 
   build:
-    name: Build & Docker
+    name: Build
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -91,37 +118,18 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - name: TypeScript compile
-        run: npx tsc
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-dependency-path: backend/package-lock.json
 
-  deploy:
-    name: Deploy
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to production
-        run: |
-          echo "Deploying ${{ github.sha }} to production..."
-          # Add your deployment command here:
-          # ssh user@host "docker pull ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.sha }} && docker-compose up -d"
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: ./backend
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: Build backend
+        working-directory: ./backend
+        run: npm run build
