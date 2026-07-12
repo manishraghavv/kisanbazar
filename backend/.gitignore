@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────────────────────
+#  BACKEND — Node.js + Express + Prisma .gitignore
+# ─────────────────────────────────────────────────────────────
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Prisma generated files
+/generated/
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Uploads (local dev)
+uploads/*
+!uploads/.gitkeep
+
+# Misc
+*.tgz
+.eslintcache
+BACKEND_IMPLEMENTATION_PLAN.md
+
+IMPLEMENTATION_PLAN_INDUSTRY_LEVEL.md
+PHASE_8_POST_LAUNCH_ROADMAP.md

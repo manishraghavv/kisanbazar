@@ -1,0 +1,1150 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+//  ENUMS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  FARMER
+  VENDOR
+  ADMIN
+  DELIVERY
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  DELETED
+}
+
+enum KycStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum EnterpriseSize {
+  MICRO // < 5 Cr revenue
+  SMALL // 5–25 Cr
+  MEDIUM // 25–100 Cr
+  LARGE // 100–500 Cr
+  ENTERPRISE // 500 Cr+
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  FLAGGED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NET_BANKING
+  COD
+  WALLET
+  KHATA_CREDIT // ← udhar se payment
+}
+
+enum SettlementStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+  FREE_DELIVERY
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_USER
+  RESOLVED
+  CLOSED
+}
+
+// ─────────────────────────────────────────────
+//  KHATABOOK ENUMS  (NEW)
+// ─────────────────────────────────────────────
+
+enum KhataTransactionType {
+  UDHAR_DIYA // Vendor gave credit to farmer
+  WAPSI_MILI // Farmer repaid
+  INTEREST_LAGA // Interest charged
+  WAIVER // Admin/vendor waived off
+  ORDER_LINKED // Auto-created when order placed on khata
+}
+
+enum KhataStatus {
+  ACTIVE
+  SETTLED
+  OVERDUE
+  SUSPENDED
+  WRITTEN_OFF
+}
+
+enum KhataRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+//  INDUSTRY & ENTERPRISE TIER  (ENTERPRISE)
+// ─────────────────────────────────────────────
+
+model Industry {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  vendors Vendor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("industries")
+}
+
+model EnterpriseTier {
+  id                    String         @id @default(uuid())
+  name                  String         @unique // e.g. "Gold", "Platinum"
+  size                  EnterpriseSize @unique
+  minAnnualRevenue      Decimal?       @db.Decimal(14, 2)
+  maxAnnualRevenue      Decimal?       @db.Decimal(14, 2)
+  defaultCommissionRate Decimal?       @db.Decimal(5, 2)
+  maxKhataLimit         Decimal?       @db.Decimal(12, 2) // Max udhar they can extend
+  description           String?
+
+  vendors Vendor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("enterprise_tiers")
+}
+
+// ─────────────────────────────────────────────
+//  USERS
+// ─────────────────────────────────────────────
+
+model User {
+  id           String  @id @default(uuid())
+  fullName     String
+  email        String? @unique
+  phoneNumber  String @unique
+  passwordHash String?
+
+  role   UserRole
+  status UserStatus @default(ACTIVE)
+
+  isPhoneVerified Boolean @default(false)
+  isEmailVerified Boolean @default(false)
+
+  languagePref String  @default("hi") // hi | en | mr | pa | ta
+  deviceType   String? // android | ios | web
+
+  referralCode String? @unique
+  referredById String?
+  referredBy   User?   @relation("Referrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("Referrals")
+
+  farmerProfile Farmer?
+  vendorProfile Vendor?
+
+  addresses      Address[]
+  orders         Order[]
+  reviews        Review[]
+  notifications  Notification[]
+  sessions       Session[]
+  otpRequests    OtpVerification[]
+  supportTickets SupportTicket[]
+  productViews   ProductView[]
+  searchHistory  SearchHistory[]
+  cart           Cart?
+  wishlist       Wishlist?
+  wallet         Wallet?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // soft delete — DPDP Act compliance
+  lastLoginAt DateTime?
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model Farmer {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  village  String?
+  district String?
+  state    String?
+  pincode  String?
+
+  landAreaAcres Decimal? @db.Decimal(8, 2)
+  primaryCrops  String[] // ["wheat", "rice"]
+
+  user User @relation(fields: [userId], references: [id])
+
+  // KhataBook — farmer ke saare udhar accounts
+  khataAccounts KhataAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("farmers")
+}
+
+// ─────────────────────────────────────────────
+//  VENDOR
+// ─────────────────────────────────────────────
+
+model Vendor {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  businessName String
+  gstNumber    String? @unique
+  panNumber    String? @unique
+
+  kycStatus KycStatus @default(PENDING)
+
+  commissionRate Decimal @db.Decimal(5, 2)
+
+  tier             String? // bronze | silver | gold | platinum
+  isFeatures       Boolean @default(false)
+  suspensionReason String?
+
+  // Enterprise classification
+  industryId       String?
+  enterpriseTierId String?
+  industry         Industry?       @relation(fields: [industryId], references: [id])
+  enterpriseTier   EnterpriseTier? @relation(fields: [enterpriseTierId], references: [id])
+
+  // Khata — vendor ke saare farmer udhar accounts
+  khataAccounts KhataAccount[]
+
+  user User @relation(fields: [userId], references: [id])
+
+  products     Product[]
+  documents    VendorDocument[]
+  bankAccounts VendorBankAccount[]
+  settlements  VendorSettlement[]
+  commissions  VendorCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([industryId])
+  @@index([enterpriseTierId])
+  @@index([kycStatus])
+  @@map("vendors")
+}
+
+model VendorDocument {
+  id           String  @id @default(uuid())
+  vendorId     String
+  documentType String // gst_cert | pan | fssai | shop_license
+  documentUrl  String
+  isVerified   Boolean @default(false)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorId])
+  @@map("vendor_documents")
+}
+
+model VendorBankAccount {
+  id            String  @id @default(uuid())
+  vendorId      String
+  bankName      String
+  accountNumber String // encrypted at app layer
+  ifscCode      String
+  accountHolder String
+  isPrimary     Boolean @default(false)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorId])
+  @@map("vendor_bank_accounts")
+}
+
+model VendorSettlement {
+  id               String           @id @default(uuid())
+  vendorId         String
+  periodStart      DateTime
+  periodEnd        DateTime
+  totalSales       Decimal          @db.Decimal(12, 2)
+  commissionAmount Decimal          @db.Decimal(12, 2)
+  tdsDeducted      Decimal          @default(0) @db.Decimal(12, 2) // 1% TDS
+  payableAmount    Decimal          @db.Decimal(12, 2)
+  utrNumber        String? // bank transfer reference
+  status           SettlementStatus @default(PENDING)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  settledAt DateTime?
+
+  @@index([vendorId])
+  @@index([status])
+  @@map("vendor_settlements")
+}
+
+// ─────────────────────────────────────────────
+//  KHATABOOK  (NEW — full udhar system)
+// ─────────────────────────────────────────────
+
+/// Ek vendor aur ek farmer ke beech ka udhar khata
+model KhataAccount {
+  id String @id @default(uuid())
+
+  vendorId String
+  farmerId String
+
+  // Credit policy set by vendor for this farmer
+  creditLimitAmount Decimal @db.Decimal(12, 2) // Max udhar allowed
+  interestRatePct   Decimal @default(0) @db.Decimal(5, 2) // Annual %
+  creditPeriodDays  Int     @default(30) // Kitne din baad bhar dena hai
+
+  // Running balance — positive = farmer owes vendor
+  outstandingAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  status KhataStatus @default(ACTIVE)
+
+  lastTransactionAt  DateTime?
+  dueDateNextPayment DateTime?
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  farmer Farmer @relation(fields: [farmerId], references: [id])
+
+  transactions KhataTransaction[]
+  orders       Order[]            @relation("KhataOrders") // orders placed on udhar
+  requests     KhataRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vendorId, farmerId]) // ek vendor-farmer pair ka ek hi khata
+  @@index([vendorId])
+  @@index([farmerId])
+  @@index([status])
+  @@map("khata_accounts")
+}
+
+/// Har debit/credit entry — complete ledger trail
+model KhataTransaction {
+  id String @id @default(uuid())
+
+  khataAccountId String
+
+  type KhataTransactionType
+
+  amount       Decimal @db.Decimal(12, 2)
+  balanceAfter Decimal @db.Decimal(12, 2) // snapshot baad wala balance
+
+  // Linked entities (optional — auto-linked on order)
+  linkedOrderId String?
+  linkedOrder   Order?  @relation("KhataTransactions", fields: [linkedOrderId], references: [id])
+
+  // Who performed this entry
+  performedById String // admin ya vendor user id
+  remarks       String? // "Gehu season payment", "Partial wapsi"
+
+  // Proof of payment
+  proofImageUrl    String? // receipt photo
+  upiTransactionId String? // if paid via UPI
+
+  khataAccount KhataAccount @relation(fields: [khataAccountId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([khataAccountId])
+  @@index([linkedOrderId])
+  @@index([type])
+  @@map("khata_transactions")
+}
+
+/// Farmer khata limit badhane ke liye request kar sakta hai
+model KhataRequest {
+  id String @id @default(uuid())
+
+  khataAccountId String
+  requestedById  String // farmer user id
+
+  requestedLimit Decimal @db.Decimal(12, 2)
+  currentLimit   Decimal @db.Decimal(12, 2)
+
+  reason String? // "Rabi season ke liye zyada khaad chahiye"
+
+  status       KhataRequestStatus @default(PENDING)
+  reviewedById String? // vendor/admin who reviewed
+  reviewNote   String?
+
+  khataAccount KhataAccount @relation(fields: [khataAccountId], references: [id])
+
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+
+  @@index([khataAccountId])
+  @@index([status])
+  @@map("khata_requests")
+}
+
+/// Monthly/periodic khata statement — PDF generate ke liye
+model KhataStatement {
+  id String @id @default(uuid())
+
+  khataAccountId String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  openingBalance  Decimal @db.Decimal(12, 2)
+  totalDebits     Decimal @db.Decimal(12, 2)
+  totalCredits    Decimal @db.Decimal(12, 2)
+  closingBalance  Decimal @db.Decimal(12, 2)
+  interestCharged Decimal @default(0) @db.Decimal(12, 2)
+
+  pdfUrl String? // generated statement PDF on S3
+
+  createdAt DateTime @default(now())
+
+  @@index([khataAccountId])
+  @@map("khata_statements")
+}
+
+// ─────────────────────────────────────────────
+//  CATEGORIES & PRODUCTS
+// ─────────────────────────────────────────────
+
+model Category {
+  id        String  @id @default(uuid())
+  name      String
+  nameHi    String? // Hindi name
+  slug      String  @unique
+  parentId  String?
+  iconUrl   String?
+  sortOrder Int     @default(0)
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  createdAt DateTime @default(now())
+
+  @@map("categories")
+}
+
+model Product {
+  id         String @id @default(uuid())
+  vendorId   String
+  categoryId String
+
+  name          String
+  nameHi        String?
+  slug          String  @unique
+  description   String?
+  descriptionHi String?
+
+  hsnCode         String? // GST HSN
+  gstRate         Decimal? @db.Decimal(5, 2)
+  unitOfMeasure   String? // kg | L | bag | piece
+  applicableCrops String[] // ["wheat","cotton"]
+  seasonalFlag    Boolean  @default(false)
+
+  status           ProductStatus    @default(DRAFT)
+  moderationStatus ModerationStatus @default(PENDING)
+
+  vendor   Vendor   @relation(fields: [vendorId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+
+  variants      ProductVariant[]
+  images        ProductImage[]
+  attributes    ProductAttribute[]
+  reviews       Review[]
+  wishlistItems WishlistItem[]
+  views         ProductView[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId])
+  @@index([categoryId])
+  @@index([status])
+  @@map("products")
+}
+
+model ProductVariant {
+  id               String  @id @default(uuid())
+  productId        String
+  sku              String  @unique
+  variantName      String? // "500g bag", "1kg pack"
+  mrp              Decimal @db.Decimal(10, 2)
+  sellingPrice     Decimal @db.Decimal(10, 2)
+  stockQuantity    Int     @default(0)
+  reservedQty      Int     @default(0)
+  reorderThreshold Int     @default(0)
+  weightGrams      Int?
+  attributes       Json? // {size, color, pack_type}
+
+  product Product @relation(fields: [productId], references: [id])
+
+  inventoryLogs Inventory[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  imageUrl  String
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model ProductAttribute {
+  id        String  @id @default(uuid())
+  productId String
+  name      String // "Active Ingredient", "Dosage"
+  value     String
+  nameHi    String?
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("product_attributes")
+}
+
+model Inventory {
+  id             String  @id @default(uuid())
+  variantId      String
+  quantityChange Int // positive = stock in, negative = sold/reserved
+  reason         String // SALE | RESTOCK | RETURN | ADJUSTMENT | DAMAGED
+  referenceId    String? // orderId or purchaseOrderId
+  performedById  String?
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([variantId])
+  @@map("inventory_logs")
+}
+
+// ─────────────────────────────────────────────
+//  ADDRESS
+// ─────────────────────────────────────────────
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String
+  label        String? // "Home Farm", "Second Field"
+  addressLine1 String
+  addressLine2 String?
+  village      String?
+  city         String
+  district     String?
+  state        String
+  pincode      String
+  geoLat       Decimal? @db.Decimal(10, 7)
+  geoLng       Decimal? @db.Decimal(10, 7)
+  isDefault    Boolean  @default(false)
+
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ─────────────────────────────────────────────
+//  ORDERS
+// ─────────────────────────────────────────────
+
+model Order {
+  id          String @id @default(uuid())
+  orderNumber String @unique // KB-2026-000001
+
+  userId    String
+  addressId String
+
+  subtotal       Decimal @db.Decimal(12, 2)
+  gstAmount      Decimal @default(0) @db.Decimal(12, 2)
+  deliveryCharge Decimal @default(0) @db.Decimal(8, 2)
+  discountAmount Decimal @default(0) @db.Decimal(8, 2)
+  totalAmount    Decimal @db.Decimal(12, 2)
+
+  status        OrderStatus   @default(PENDING)
+  paymentMethod PaymentMethod
+
+  couponCode         String?
+  channel            String? // web | android | ios
+  cancellationReason String?
+  expectedDelivery   DateTime?
+
+  // Khata/udhar link — agar COD ki jagah khata pe order tha
+  khataAccountId String?
+  khataAccount   KhataAccount? @relation("KhataOrders", fields: [khataAccountId], references: [id])
+
+  user    User    @relation(fields: [userId], references: [id])
+  address Address @relation(fields: [addressId], references: [id])
+
+  items             OrderItem[]
+  payments          Payment[]
+  shipments         Shipment[]
+  refunds           Refunds[]
+  returns           Returns[]
+  vendorCommissions VendorCommission[]
+  statusHistory     OrderStatusHistory[]
+  khataTransactions KhataTransaction[]   @relation("KhataTransactions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([khataAccountId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id               String       @id @default(uuid())
+  orderId          String
+  variantId        String
+  quantity         Int
+  unitPrice        Decimal      @db.Decimal(10, 2)
+  gstRate          Decimal      @default(0) @db.Decimal(5, 2)
+  itemStatus       OrderStatus? // per-item fulfillment tracking
+  returnRequested  Boolean      @default(false)
+  commissionAmount Decimal?     @db.Decimal(10, 2)
+
+  order   Order          @relation(fields: [orderId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id        String       @id @default(uuid())
+  orderId   String
+  oldStatus OrderStatus?
+  newStatus OrderStatus
+  remarks   String?
+  changedBy String?
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  changedAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
+// ─────────────────────────────────────────────
+//  SHIPMENTS
+// ─────────────────────────────────────────────
+
+model Shipment {
+  id               String    @id @default(uuid())
+  orderId          String
+  logisticsPartner String? // shiprocket | delhivery | self
+  awbNumber        String? // Air Waybill / tracking ID
+  pickupEta        DateTime?
+  deliveryEta      DateTime?
+  podImageUrl      String? // proof of delivery photo
+  deliveryAttempts Int       @default(0)
+  currentStatus    String?
+
+  order  Order           @relation(fields: [orderId], references: [id])
+  events ShipmentEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@map("shipments")
+}
+
+model ShipmentEvent {
+  id          String   @id @default(uuid())
+  shipmentId  String
+  eventStatus String
+  location    String?
+  geoLat      Decimal? @db.Decimal(10, 7)
+  geoLng      Decimal? @db.Decimal(10, 7)
+  source      String? // webhook | manual | driver_app
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+
+  eventTime DateTime @default(now())
+
+  @@index([shipmentId])
+  @@map("shipment_events")
+}
+
+// ─────────────────────────────────────────────
+//  PAYMENTS & FINANCIALS
+// ─────────────────────────────────────────────
+
+model Payment {
+  id             String        @id @default(uuid())
+  orderId        String
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("INR")
+  paymentMethod  PaymentMethod
+  gateway        String? // razorpay | payu | cod
+  transactionId  String?
+  gatewayFee     Decimal?      @db.Decimal(8, 2)
+  status         PaymentStatus @default(PENDING)
+  idempotencyKey String?       @unique // prevent double-charge
+  webhookPayload Json? // raw gateway webhook for audit
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime  @default(now())
+  paidAt    DateTime?
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model Refunds {
+  id              String    @id @default(uuid())
+  orderId         String
+  orderItemId     String? // item-level refund
+  amount          Decimal   @db.Decimal(12, 2)
+  reason          String?
+  status          String    @default("PENDING")
+  gatewayRefundId String?
+  processedAt     DateTime?
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("refunds")
+}
+
+model Returns {
+  id        String   @id @default(uuid())
+  orderId   String
+  reason    String
+  photoUrls String[]
+  status    String   @default("REQUESTED") // REQUESTED | APPROVED | PICKED | REFUNDED
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("returns")
+}
+
+model VendorCommission {
+  id               String  @id @default(uuid())
+  vendorId         String
+  orderId          String
+  commissionRate   Decimal @db.Decimal(5, 2)
+  grossAmount      Decimal @db.Decimal(12, 2)
+  commissionAmount Decimal @db.Decimal(12, 2)
+  netAmount        Decimal @db.Decimal(12, 2)
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorId])
+  @@index([orderId])
+  @@map("vendor_commissions")
+}
+
+// ─────────────────────────────────────────────
+//  CART & WISHLIST
+// ─────────────────────────────────────────────
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String @id @default(uuid())
+  cartId    String
+  variantId String
+  quantity  Int
+
+  cart    Cart           @relation(fields: [cartId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model Wishlist {
+  id     String         @id @default(uuid())
+  userId String         @unique
+  user   User           @relation(fields: [userId], references: [id])
+  items  WishlistItem[]
+
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String @id @default(uuid())
+  wishlistId String
+  productId  String
+
+  wishlist Wishlist @relation(fields: [wishlistId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([wishlistId])
+  @@map("wishlist_items")
+}
+
+// ─────────────────────────────────────────────
+//  COUPONS & WALLET
+// ─────────────────────────────────────────────
+
+model Coupon {
+  id              String     @id @default(uuid())
+  code            String     @unique
+  title           String
+  type            CouponType
+  value           Decimal    @db.Decimal(10, 2)
+  minimumAmount   Decimal?   @db.Decimal(10, 2)
+  maximumDiscount Decimal?   @db.Decimal(10, 2)
+  usageLimit      Int?
+  usedCount       Int        @default(0)
+  perUserLimit    Int        @default(1)
+  applicableTo    String     @default("ALL") // ALL | CATEGORY | VENDOR
+  startsAt        DateTime
+  expiresAt       DateTime
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([code])
+  @@map("coupons")
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  userId       String              @unique
+  balance      Decimal             @default(0) @db.Decimal(12, 2)
+  user         User                @relation(fields: [userId], references: [id])
+  transactions WalletTransaction[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id           String                @id @default(uuid())
+  walletId     String
+  type         WalletTransactionType
+  amount       Decimal               @db.Decimal(12, 2)
+  balanceAfter Decimal               @db.Decimal(12, 2)
+  remarks      String?
+  referenceId  String? // orderId ya khata transaction id
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId])
+  @@map("wallet_transactions")
+}
+
+// ─────────────────────────────────────────────
+//  REVIEWS & RATINGS
+// ─────────────────────────────────────────────
+
+model Review {
+  id              String   @id @default(uuid())
+  userId          String
+  productId       String
+  rating          Int // 1–5
+  comment         String?
+  photoUrls       String[]
+  isVerifiedBuyer Boolean  @default(false)
+  helpfulCount    Int      @default(0)
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+// ─────────────────────────────────────────────
+//  NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id       String  @id @default(uuid())
+  userId   String
+  title    String
+  message  String
+  type     String? // ORDER_UPDATE | KHATA_REMINDER | OFFER | SYSTEM
+  isRead   Boolean @default(false)
+  deepLink String? // app deep link URL
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model NotificationTemplate {
+  id        String              @id @default(uuid())
+  name      String
+  channel   NotificationChannel
+  subject   String?
+  content   String // supports {{variable}} placeholders
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@map("notification_templates")
+}
+
+// ─────────────────────────────────────────────
+//  AUTH & SESSIONS
+// ─────────────────────────────────────────────
+
+model OtpVerification {
+  id          String   @id @default(uuid())
+  userId      String?
+  phoneNumber String
+  otpHash     String // bcrypt hash — never store plain OTP
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  isUsed      Boolean  @default(false)
+  ipAddress   String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([phoneNumber])
+  @@map("otp_verifications")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  deviceType   String?
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────
+//  ANALYTICS & AUDIT
+// ─────────────────────────────────────────────
+
+model ProductView {
+  id        String  @id @default(uuid())
+  productId String
+  userId    String?
+  ipAddress String?
+  sessionId String?
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  viewedAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([userId])
+  @@map("product_views")
+}
+
+model SearchHistory {
+  id               String  @id @default(uuid())
+  userId           String?
+  keyword          String
+  resultCount      Int?
+  clickedProductId String?
+  converted        Boolean @default(false)
+  sessionId        String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  searchedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([keyword])
+  @@map("search_history")
+}
+
+model AuditLog {
+  id         String  @id @default(uuid())
+  actorId    String?
+  actorRole  String?
+  action     String // vendor.approve | order.cancel | khata.credit
+  entityType String // product | order | khata_account
+  entityId   String
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────
+//  SUPPORT
+// ─────────────────────────────────────────────
+
+model SupportTicket {
+  id          String         @id @default(uuid())
+  userId      String
+  title       String
+  description String
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+  category    String? // ORDER | PAYMENT | KHATA | PRODUCT | OTHER
+  referenceId String? // orderId ya khataAccountId
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+// ─────────────────────────────────────────────
+//  RBAC — PERMISSIONS
+// ─────────────────────────────────────────────
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique // khata.approve | vendor.suspend | order.refund
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@unique([role, permissionId])
+  @@map("role_permissions")
+}
