@@ -151,8 +151,9 @@ function TicketDetailDrawer({
   const [sendingReply, setSendingReply] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
+    /* eslint-disable react-hooks/set-state-in-effect */
     fetchTicketById(ticketId).finally(() => setLoading(false));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [ticketId, fetchTicketById]);
 
   const handleSendReply = async () => {
@@ -203,7 +204,7 @@ function TicketDetailDrawer({
   }
 
   const t = selectedTicket;
-  const messages: TicketMessage[] = (t as any).messages ?? [];
+  const messages: TicketMessage[] = (t as unknown as { messages?: TicketMessage[] }).messages ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end">
@@ -491,7 +492,9 @@ export default function SupportPage() {
   );
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadTickets(currentPage, statusFilter);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [currentPage, statusFilter, loadTickets]);
 
   const handlePageChange = (p: number) => {

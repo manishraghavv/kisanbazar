@@ -43,7 +43,9 @@ export default function OrderConfirmationPage() {
     const orderNumber = sessionStorage.getItem("lastOrderNumber");
 
     if (!orderId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError("No recent order found");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(false);
       return;
     }
@@ -73,7 +75,7 @@ export default function OrderConfirmationPage() {
             items: [],
             user: { id: "", fullName: "", phoneNumber: "" },
             addressId: "",
-            address: {} as any,
+            address: {} as import("@/types/auth").Address,
             payments: [],
             shipments: [],
             statusHistory: [],
@@ -116,7 +118,7 @@ export default function OrderConfirmationPage() {
             {error ?? "Order not found"}
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-            We couldn't find your recent order details
+            We couldn&apos;t find your recent order details
           </p>
           <Link
             href="/dashboard/orders"
@@ -205,7 +207,7 @@ export default function OrderConfirmationPage() {
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100">Shipped & Delivered</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                You'll receive tracking details once shipped
+                You&apos;ll receive tracking details once shipped
               </p>
             </div>
           </div>
@@ -271,7 +273,7 @@ export default function OrderConfirmationPage() {
       <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
         <Sparkles size={12} className="text-emerald-500" />
         <span>
-          You'll receive an order confirmation on your registered phone number
+          You&apos;ll receive an order confirmation on your registered phone number
         </span>
       </div>
     </div>

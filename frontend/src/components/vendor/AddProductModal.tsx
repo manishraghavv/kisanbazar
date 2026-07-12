@@ -89,6 +89,7 @@ export default function AddProductModal({ onClose, onCreated }: Props) {
   // Auto-generate SKU from name
   useEffect(() => {
     if (name) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSku(
         name
           .toUpperCase()

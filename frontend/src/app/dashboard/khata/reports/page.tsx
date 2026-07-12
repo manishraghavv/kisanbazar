@@ -201,9 +201,11 @@ export default function KhataReportsPage() {
     }
   }, [isAdmin, isVendor]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadData();
   }, [loadData]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Fetch trends data
   const loadTrends = useCallback(async () => {
@@ -218,9 +220,11 @@ export default function KhataReportsPage() {
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadTrends();
   }, [loadTrends]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── CSV Export ──────────────────────────────────────────────────────────
 

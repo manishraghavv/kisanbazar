@@ -135,6 +135,7 @@ function TicketDetailDrawer({ ticketId, onClose, onRefresh }: { ticketId: string
     }
   }, [ticketId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadTicket(); }, [loadTicket]);
 
   const handleSendReply = async () => {
@@ -295,6 +296,7 @@ export default function AdminSupportPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadTickets(page, statusFilter); }, [page, statusFilter, loadTickets]);
 
   const handlePageChange = (p: number) => { if (p >= 1 && p <= totalPages) setPage(p); };

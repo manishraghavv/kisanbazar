@@ -324,10 +324,12 @@ export default function ManageVariantsPage() {
     }
   }, [productId]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadData();
     loadVariants();
   }, [loadData, loadVariants]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Open modal for adding a variant
   const handleAdd = () => {

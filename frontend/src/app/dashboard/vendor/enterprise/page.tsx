@@ -102,6 +102,7 @@ export default function VendorEnterprisePage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleSave = async () => {

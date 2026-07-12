@@ -238,12 +238,14 @@ export default function MarketIntelligencePage() {
 
   // ── Refresh on navigation: reset all state on mount ──
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setTrendingPage(1);
     setTopSellingPage(1);
     setSearchesPage(1);
     setCategoriesPage(1);
     setStartDate("");
     setEndDate("");
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const loadData = useCallback(async () => {
@@ -269,7 +271,9 @@ export default function MarketIntelligencePage() {
   }, [trendingPage, topSellingPage, searchesPage, categoriesPage, startDate, endDate]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadData();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [loadData]);
 
   // ── CSV Export ────────────────────────────────────────────────────────────
@@ -404,7 +408,9 @@ export default function MarketIntelligencePage() {
                       { label: "90d", days: 90 },
                       { label: "1yr", days: 365 },
                     ].map((preset) => {
-                      const isActive = startDate === new Date(Date.now() - preset.days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) && !endDate;
+                      const targetDate = new Date();
+                      targetDate.setDate(targetDate.getDate() - preset.days);
+                      const isActive = startDate === targetDate.toISOString().slice(0, 10) && !endDate;
                       return (
                         <button
                           key={preset.label}

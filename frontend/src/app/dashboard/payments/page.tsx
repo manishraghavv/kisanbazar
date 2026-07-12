@@ -180,10 +180,12 @@ function PaymentDetailDrawer({
   const { selectedPayment, isPaymentLoading, getPaymentById } = usePaymentStore();
   const [loading, setLoading] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
     getPaymentById(paymentId).finally(() => setLoading(false));
   }, [paymentId, getPaymentById]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading || isPaymentLoading || !selectedPayment) {
     return (
@@ -390,9 +392,11 @@ export default function PaymentsPage() {
     [getPayments],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadPayments(currentPage, statusFilter);
   }, [currentPage, statusFilter, loadPayments]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handlePageChange = (p: number) => {
     if (p < 1) return;

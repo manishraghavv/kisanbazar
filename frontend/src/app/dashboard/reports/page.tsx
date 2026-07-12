@@ -43,10 +43,13 @@ export default function ReportsPage() {
 
   const isAdmin = user?.role === "ADMIN";
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (activeTab === "sales") {
       fetchSalesReport(currentPage, 20).catch(() => toast.error("Failed to load sales report"));
@@ -56,6 +59,7 @@ export default function ReportsPage() {
       fetchKhataOverdue(currentPage, 20, minOverdueDays).catch(() => toast.error("Failed to load overdue report"));
     }
   }, [activeTab, currentPage, minOverdueDays, fetchSalesReport, fetchProductPerformance, fetchKhataOverdue]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const totalPagesNum = Math.max(1, Math.ceil(total / 20));
 

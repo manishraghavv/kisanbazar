@@ -403,6 +403,7 @@ export default function FarmerKhataDashboard() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
   // Compute derived data

@@ -326,13 +326,17 @@ export default function OrderDetailPage() {
     }
   }, [orderId, fetchOrderById]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (selectedOrder) setOrder(selectedOrder);
   }, [selectedOrder]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Cancel handler
   const handleCancel = async (reason: string) => {

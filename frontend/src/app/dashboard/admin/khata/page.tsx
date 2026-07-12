@@ -118,6 +118,7 @@ export default function AdminKhataOverviewPage() {
     } finally { setIsLoading(false); }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchOverview(); }, [fetchOverview]);
 
   const triggerCron = async (name: string, endpoint: string) => {

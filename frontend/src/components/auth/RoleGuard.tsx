@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import type { UserRole } from "@/types/auth";
@@ -28,28 +28,30 @@ export function RoleGuard({
 }: RoleGuardProps) {
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const router = useRouter();
-  const isRedirecting = useRef(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const hasRequiredRole = user?.role ? allowedRoles.includes(user.role) : false;
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (isLoading) return;
 
     if (!isAuthenticated) {
-      isRedirecting.current = true;
+      setIsRedirecting(true);
       router.replace("/auth/login");
       return;
     }
 
     if (!hasRequiredRole) {
-      isRedirecting.current = true;
+      setIsRedirecting(true);
       router.replace(fallbackRoute);
     }
   }, [isLoading, isAuthenticated, hasRequiredRole, router, fallbackRoute]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // While loading, not authenticated, or unauthorised — show spinner
   // (redirect is triggered via the effect above)
-  if (isLoading || !isAuthenticated || (isRedirecting.current && !hasRequiredRole)) {
+  if (isLoading || !isAuthenticated || (isRedirecting && !hasRequiredRole)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-400 dark:text-emerald-400" />

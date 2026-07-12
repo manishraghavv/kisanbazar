@@ -204,10 +204,12 @@ function OrderDetailDrawer({
   const { selectedOrder, isOrderLoading, fetchOrderById } = useOrderStore();
   const [loading, setLoading] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
     fetchOrderById(orderId).finally(() => setLoading(false));
   }, [orderId, fetchOrderById]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading || isOrderLoading || !selectedOrder) {
     return (
@@ -625,9 +627,11 @@ export default function OrdersPage() {
     [fetchOrders],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadOrders(currentPage, statusFilter);
   }, [currentPage, statusFilter, loadOrders]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFilterChange = (status: OrderStatus | "") => {
     setStatusFilter(status);

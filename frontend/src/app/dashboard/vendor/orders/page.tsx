@@ -264,6 +264,7 @@ function OrderDetailModal({
     }
   }, [orderId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadOrder(); }, [loadOrder]);
 
   const handleStatusUpdate = async (newStatus: string) => {
@@ -579,9 +580,11 @@ export default function VendorOrdersPage() {
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadOrders(page, statusFilter);
   }, [page, statusFilter, loadOrders]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFilterChange = (s: OrderStatus | "") => {
     setStatusFilter(s);

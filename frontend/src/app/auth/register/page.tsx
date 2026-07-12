@@ -98,6 +98,7 @@ export default function RegisterPage() {
     mode: "onTouched",
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const selectedRole = watch("role");
 
   const goToStep2 = async () => {

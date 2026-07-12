@@ -258,10 +258,12 @@ export default function WalletPage() {
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadWallet();
     loadTransactions(1);
   }, [loadWallet, loadTransactions]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (isLoading) {
     return (

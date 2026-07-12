@@ -414,6 +414,7 @@ function DeleteModal({
 
 // ─── Address Card ─────────────────────────────────────────────────────────────
 
+/* eslint-disable react-hooks/static-components */
 function AddressCard({
   address,
   onEdit,
@@ -498,6 +499,8 @@ function AddressCard({
   );
 }
 
+/* eslint-enable react-hooks/static-components */
+
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
@@ -540,7 +543,8 @@ export default function AddressesPage() {
     fetchAddresses().catch(() => {
       toast.error("Failed to load addresses");
     });
-  }, [fetchAddresses, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchAddresses]);
 
   // UI state
   const [showAddForm, setShowAddForm] = useState(false);

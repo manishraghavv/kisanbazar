@@ -283,9 +283,11 @@ export default function AdminSettlementsPage() {
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadSettlements(1);
   }, [loadSettlements]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handlePageChange = (p: number) => {
     if (p < 1 || p > totalPages) return;

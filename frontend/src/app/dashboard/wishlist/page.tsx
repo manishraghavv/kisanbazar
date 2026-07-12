@@ -230,7 +230,7 @@ export default function WishlistPage() {
       {/* Grid */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((product) => {
-          const wishlistItemId = (product as any).wishlistItemId;
+          const wishlistItemId = product.wishlistItemId;
           return (
             <WishlistCard
               key={wishlistItemId}

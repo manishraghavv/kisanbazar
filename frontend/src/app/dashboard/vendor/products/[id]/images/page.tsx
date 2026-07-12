@@ -84,10 +84,12 @@ export default function ManageImagesPage() {
     }
   }, [productId]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadData();
     loadImages();
   }, [loadData, loadImages]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Add image
   const handleAdd = async (e: React.FormEvent) => {

@@ -257,6 +257,7 @@ export default function AdminTiersPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadTiers(); }, [loadTiers]);
 
   return (

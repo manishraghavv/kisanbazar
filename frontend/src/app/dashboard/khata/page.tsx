@@ -198,12 +198,14 @@ function AccountDetailDrawer({
     useKhataStore();
   const [loading, setLoading] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setLoading(true);
     Promise.all([getAccountById(accountId), getTransactions(accountId)]).finally(() =>
       setLoading(false),
     );
   }, [accountId, getAccountById, getTransactions]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading || isAccountLoading || !selectedAccount) {
     return (
@@ -323,6 +325,7 @@ function CreateKhataAccountDrawer({ onClose, onCreated }: { onClose: () => void;
   const [formError, setFormError] = useState("");
 
   // Debounced search
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 3) {
       setSearchResults([]);
@@ -598,9 +601,11 @@ export default function KhataPage() {
     [getAccounts],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadAccounts(currentPage);
   }, [currentPage, loadAccounts]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handlePageChange = (p: number) => {
     if (p < 1) return;

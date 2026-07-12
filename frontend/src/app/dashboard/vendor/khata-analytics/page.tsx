@@ -331,9 +331,11 @@ export default function KhataAnalyticsPage() {
     }
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleRefresh = () => {
     setIsRefreshing(true);

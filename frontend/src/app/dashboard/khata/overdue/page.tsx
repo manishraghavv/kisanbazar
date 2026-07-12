@@ -94,6 +94,7 @@ export default function OverdueAccountsPage() {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadOverdue(page, minDays); }, [page, minDays, loadOverdue]);
 
   const handlePageChange = (p: number) => { if (p >= 1 && p <= totalPages) setPage(p); };

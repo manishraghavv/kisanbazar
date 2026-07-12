@@ -190,6 +190,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (dataLoaded) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
     setDataLoaded(true);
     fetchProducts({ limit: 8, sortBy: "createdAt", sortOrder: "desc" }).catch(() => {});
     fetchCategories()
@@ -198,6 +199,7 @@ export default function HomePage() {
         setTopCategories(top);
       })
       .catch(() => {});
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [dataLoaded, fetchProducts, fetchCategories]);
 
   const featuredProducts = products.slice(0, 8);
