@@ -19,10 +19,11 @@ import {
   refreshTokenSchema,
 } from './auth.validator';
 import { asyncHandler } from '../../common/middleware/asyncHandler';
+import Joi from 'joi';
 
 const router = Router();
 
-function validate(schema: ReturnType<typeof import('joi').object>) {
+function validate(schema: Joi.ObjectSchema) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const { error } = schema.validate(req.body, { abortEarly: false });
     if (error) {

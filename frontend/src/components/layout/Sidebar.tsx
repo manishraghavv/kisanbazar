@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Sprout,
+  TrendingUp,
   ChevronLeft,
   ChevronRight,
   X,
@@ -74,6 +75,7 @@ const iconMap: Record<string, LucideIcon> = {
   BarChart3,
   Bell,
   Settings,
+  TrendingUp,
 };
 
 // ─── Single nav item ──────────────────────────────────────────────────────────

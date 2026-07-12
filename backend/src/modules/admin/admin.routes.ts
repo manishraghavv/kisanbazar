@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import Joi from 'joi';
 import { authenticate, authorize } from '../../common/middleware/authMiddleware';
 import { asyncHandler } from '../../common/middleware/asyncHandler';
 import { AuthRequest } from '../../common/types/express.d';
@@ -22,7 +23,7 @@ import {
 
 const router = Router();
 
-function validateBody(schema: ReturnType<typeof import('joi').object>) {
+function validateBody(schema: Joi.ObjectSchema) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true });
     if (error) {
@@ -60,7 +61,7 @@ router.use('/queues', (req: Request, res: Response, next: NextFunction) => {
 
 export async function initBullBoard(): Promise<void> {
   try {
-    const { queues: q } = require('../../jobs/queues');
+    const { queues: q } = await import('../../jobs/queues');
     const qMap: Record<string, unknown> = q || {};
     const entries = Object.entries(qMap).filter(([, val]) => val !== null);
 

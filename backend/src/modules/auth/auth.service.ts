@@ -10,6 +10,7 @@ import {
   BadRequestError,
   TooManyRequestsError,
 } from '../../common/errors';
+import { UserRole } from '@prisma/client';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
@@ -69,7 +70,7 @@ export class AuthService {
         phoneNumber,
         email,
         passwordHash,
-        role: role as any,
+        role: role as UserRole,
         referralCode: newReferralCode,
         referredById,
         languagePref: languagePref ?? 'hi',

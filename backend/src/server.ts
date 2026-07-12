@@ -11,6 +11,8 @@ import { AppError } from './common/errors';
 import { asyncHandler } from './common/middleware/asyncHandler';
 import { metricsMiddleware, metricsHandler } from './common/middleware/metrics';
 import { initSocket } from './common/lib/socket';
+import { AuthRequest } from './common/types/express.d';
+import Joi from 'joi';
 
 import authRoutes from './modules/auth/auth.routes';
 import userRoutes from './modules/users/user.routes';
@@ -24,6 +26,7 @@ import addressRoutes from './modules/addresses/address.routes';
 import { adminRouter, invoiceRouter, autoApplyCouponHandler } from './modules/admin/admin.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import bulkImportRoutes from './modules/products/bulk-import.routes';
+import { autoApplyCouponSchema, validateCouponSchema } from './modules/payments/payment.validator';
 
 const app: Express = express();
 const httpServer = http.createServer(app);
@@ -77,19 +80,18 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // B.8 — Auto-apply best coupon
 app.post('/api/coupons/auto-apply', (req, res, next) => {
-  const { autoApplyCouponSchema } = require('./modules/payments/payment.validator');
   const { error, value } = autoApplyCouponSchema.validate(req.body, { abortEarly: false, stripUnknown: true });
   if (error) {
     res.status(422).json({
       success: false,
       message: 'Validation failed',
-      errors: error.details.map((d: any) => ({ field: d.path.join('.'), message: d.message })),
+      errors: error.details.map((d: Joi.ValidationErrorItem) => ({ field: d.path.join('.'), message: d.message })),
     });
     return;
   }
   req.body = value;
   // Wrap in asyncHandler to catch async errors
-  asyncHandler((req: Request, res: Response) => autoApplyCouponHandler(req as any, res))(req, res, next);
+  asyncHandler((req: Request, res: Response) => autoApplyCouponHandler(req as AuthRequest, res))(req, res, next);
 });
 
 // ── Metrics Endpoint ────────────────────────────────────────────────────────

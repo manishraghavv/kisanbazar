@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────
 #  DEPLOY — Multi-Vendor Agri-Commerce CI/CD Pipeline
-#  Trigger: push to main → build & deploy to AWS EC2
+#  Trigger: push to main → lint → typecheck → build → deploy
 # ─────────────────────────────────────────────────────────────
 
 name: Deploy to EC2
@@ -12,9 +12,13 @@ on:
 env:
   NODE_VERSION: '22'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   lint-and-build:
-    name: Lint & Build
+    name: Lint, TypeCheck & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,27 +33,35 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      # ── Backend ──────────────────────────────────────────
+      # ═══════════════════════════════════
+      #  BACKEND
+      # ═══════════════════════════════════
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
 
-      - name: Backend lint (if available)
+      - name: Generate Prisma Client
         working-directory: ./backend
-        run: npx tsc --noEmit || echo "TypeScript check skipped or failed (non-blocking)"
+        run: npx prisma generate
+
+      - name: Backend TypeScript type check
+        working-directory: ./backend
+        run: npx tsc --noEmit
 
       - name: Build backend
         working-directory: ./backend
         run: npm run build
 
-      # ── Frontend ─────────────────────────────────────────
+      # ═══════════════════════════════════
+      #  FRONTEND
+      # ═══════════════════════════════════
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
 
-      - name: Frontend lint (if available)
+      - name: Frontend ESLint
         working-directory: ./frontend
-        run: npm run lint || echo "Lint skipped or failed (non-blocking)"
+        run: npm run lint
 
       - name: Build frontend
         working-directory: ./frontend
@@ -59,15 +71,17 @@ jobs:
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
           NEXT_PUBLIC_ENABLE_SOCKET: ${{ secrets.NEXT_PUBLIC_ENABLE_SOCKET || 'true' }}
 
-      # ── Validate build outputs before uploading ──────────
+      # ═══════════════════════════════════
+      #  VALIDATE BUILDS
+      # ═══════════════════════════════════
       - name: Validate backend build
         run: |
           if [ ! -d "backend/dist" ]; then
-            echo "❌ Backend dist directory not found — build may have failed"
+            echo "❌ Backend dist directory not found"
             exit 1
           fi
-          if [ ! -f "backend/dist/index.js" ] && [ ! -f "backend/dist/server.js" ] && [ ! -f "backend/dist/src/index.js" ] && [ ! -f "backend/dist/src/server.js" ]; then
-            echo "⚠️  No expected entrypoint found in backend/dist — check build output"
+          if [ ! -f "backend/dist/index.js" ] && [ ! -f "backend/dist/server.js" ]; then
+            echo "⚠️  No expected entrypoint found in backend/dist"
             ls -la backend/dist/ 2>/dev/null || true
           fi
           echo "✅ Backend build validated"
@@ -75,16 +89,18 @@ jobs:
       - name: Validate frontend build
         run: |
           if [ ! -d "frontend/.next" ]; then
-            echo "❌ Frontend .next directory not found — build may have failed"
+            echo "❌ Frontend .next directory not found"
             exit 1
           fi
           if [ ! -f "frontend/.next/BUILD_ID" ]; then
-            echo "⚠️  BUILD_ID not found in .next — build may be incomplete"
+            echo "⚠️  BUILD_ID not found in .next"
             ls -la frontend/.next/ 2>/dev/null || true
           fi
           echo "✅ Frontend build validated"
 
-      # ── Upload artifacts for deploy job ──────────────────
+      # ═══════════════════════════════════
+      #  UPLOAD ARTIFACTS
+      # ═══════════════════════════════════
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
@@ -94,7 +110,6 @@ jobs:
             backend/package.json
             backend/package-lock.json
             backend/prisma/
-            backend/ecosystem.config.cjs
           retention-days: 1
 
       - name: Upload frontend artifact
@@ -141,7 +156,6 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      # ── Create remote directory structure ────────────────
       - name: Ensure remote directories exist
         run: |
           ssh -i ~/.ssh/deploy_key \
@@ -150,7 +164,6 @@ jobs:
             ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
             "mkdir -p ~/app/backend ~/app/frontend ~/app/logs"
 
-      # ── Upload artifacts to EC2 ──────────────────────────
       - name: Upload backend to EC2
         run: |
           rsync -avz --delete \
@@ -172,7 +185,6 @@ jobs:
             ./artifacts/deploy-scripts/ \
             ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/app/
 
-      # ── Run deployment on EC2 ────────────────────────────
       - name: Execute deployment script on EC2
         run: |
           ssh -i ~/.ssh/deploy_key \
@@ -181,7 +193,6 @@ jobs:
             ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
             "chmod +x ~/app/deploy.sh && cd ~/app && bash deploy.sh"
 
-      # ── Verify deployment ────────────────────────────────
       - name: Health check
         run: |
           sleep 10
@@ -191,7 +202,6 @@ jobs:
             ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
             "curl -s http://localhost:3000/health || echo 'Health check failed'"
 
-      # ── Cleanup SSH key ──────────────────────────────────
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key

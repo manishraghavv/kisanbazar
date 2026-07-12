@@ -116,8 +116,8 @@
   --color-chart-5: var(--chart-5);
   --color-chart-grid: var(--chart-grid);
   --color-chart-text: var(--chart-text);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* ─── Base Styles ──────────────────────────────────────────────────────────── */

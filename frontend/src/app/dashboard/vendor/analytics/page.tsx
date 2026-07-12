@@ -5,7 +5,7 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { useReportStore } from "@/stores/reportStore";
 import { toast } from "sonner";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import {
@@ -229,7 +229,7 @@ export default function VendorAnalyticsPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number) => formatCurrency(v)}
+                      formatter={(v) => formatCurrency(Number(v))}
                       contentStyle={{ borderRadius: 8, fontSize: 12 }}
                     />
                     <Legend iconType="circle" iconSize={10} />
@@ -281,7 +281,7 @@ export default function VendorAnalyticsPage() {
                       <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={formatCurrency} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
                       <Tooltip
-                        formatter={(v: number) => formatCurrency(v)}
+                        formatter={(v) => formatCurrency(Number(v))}
                         contentStyle={{ borderRadius: 8, fontSize: 12 }}
                       />
                       <Bar dataKey="value" fill="#059669" radius={[0, 4, 4, 0]} />

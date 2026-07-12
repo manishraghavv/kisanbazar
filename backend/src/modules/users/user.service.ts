@@ -5,6 +5,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from '../../common/errors';
+import { UserRole, UserStatus } from '@prisma/client';
 
 export interface UpdateProfileInput {
   fullName?: string;
@@ -116,8 +117,8 @@ export class UserService {
 
     const where = {
       deletedAt: null,
-      ...(role && { role: role as any }),
-      ...(status && { status: status as any }),
+      ...(role && { role: role as UserRole }),
+      ...(status && { status: status as UserStatus }),
       ...(search && {
         OR: [
           { fullName: { contains: search, mode: 'insensitive' as const } },
@@ -161,8 +162,8 @@ export class UserService {
       data: {
         ...(input.fullName && { fullName: input.fullName }),
         ...(input.email && { email: input.email }),
-        ...(input.status && { status: input.status as any }),
-        ...(input.role && { role: input.role as any }),
+        ...(input.status && { status: input.status as UserStatus }),
+        ...(input.role && { role: input.role as UserRole }),
       },
       select: {
         id: true,
@@ -269,7 +270,7 @@ export class UserService {
 
     return prisma.user.update({
       where: { id },
-      data: { status: status as any },
+      data: { status: status as UserStatus },
       select: {
         id: true,
         fullName: true,

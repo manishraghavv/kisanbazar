@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, EnterpriseSize, SettlementStatus } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
 import {
   ForbiddenError,
@@ -49,11 +49,11 @@ export const EnterpriseService = {
     name: string; size: string; minAnnualRevenue?: number; maxAnnualRevenue?: number;
     defaultCommissionRate?: number; maxKhataLimit?: number; description?: string;
   }) {
-    const sizeExists = await prisma.enterpriseTier.findUnique({ where: { size: data.size as any } });
+    const sizeExists = await prisma.enterpriseTier.findUnique({ where: { size: data.size as EnterpriseSize } });
     if (sizeExists) throw new ConflictError(`Tier for size "${data.size}" already exists`);
     return prisma.enterpriseTier.create({
       data: {
-        name: data.name, size: data.size as any,
+        name: data.name, size: data.size as EnterpriseSize,
         minAnnualRevenue: data.minAnnualRevenue ? new Prisma.Decimal(data.minAnnualRevenue) : undefined,
         maxAnnualRevenue: data.maxAnnualRevenue ? new Prisma.Decimal(data.maxAnnualRevenue) : undefined,
         defaultCommissionRate: data.defaultCommissionRate ? new Prisma.Decimal(data.defaultCommissionRate) : undefined,

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useUiStore } from "@/stores/uiStore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "@/stores/authStore";
@@ -12,7 +11,6 @@ import { toast } from "sonner";
 import {
   LogIn, Languages, Sprout, Eye, EyeOff, Loader2,
   ShieldCheck, Headphones, Users, Store, Package, MapPin,
-  Sun, Moon, Monitor,
 } from "lucide-react";
 
 const dict = {
