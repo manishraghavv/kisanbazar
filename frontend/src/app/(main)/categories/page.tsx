@@ -52,6 +52,7 @@ function CategoryNode({
         )}
 
         {category.iconUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={category.iconUrl}
             alt=""
@@ -100,7 +101,7 @@ export default function CategoriesPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
+    /* eslint-disable react-hooks/set-state-in-effect */
     setError(null);
     apiClient
       .get<{ success: boolean; data: Category[] }>("/categories/tree")
@@ -111,6 +112,7 @@ export default function CategoriesPage() {
         setError("Failed to load categories");
       })
       .finally(() => setIsLoading(false));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   // Flatten tree to count total categories

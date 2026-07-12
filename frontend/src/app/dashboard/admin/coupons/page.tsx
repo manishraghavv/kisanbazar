@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useCouponStore } from "@/stores/couponStore";
+import type { CreateCouponPayload } from "@/types/auth";
 import { toast } from "sonner";
 import {
   Tag,
@@ -88,7 +89,7 @@ export default function AdminCouponsPage() {
         await updateCoupon(editId, data);
         toast.success("Coupon updated");
       } else {
-        await createCoupon(data as any);
+        await createCoupon(data as CreateCouponPayload);
         toast.success("Coupon created");
       }
       setShowModal(false);
@@ -199,7 +200,7 @@ export default function AdminCouponsPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Type</label>
-                  <select value={type} onChange={e => setType(e.target.value as any)}
+                  <select value={type}                  onChange={e => setType(e.target.value as "PERCENTAGE" | "FIXED" | "FREE_DELIVERY")}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 dark:border-gray-600 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500 dark:focus:border-emerald-400">
                     <option value="PERCENTAGE">Percentage (%)</option>
                     <option value="FIXED">Fixed (₹)</option>

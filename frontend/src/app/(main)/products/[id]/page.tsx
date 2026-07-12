@@ -16,7 +16,6 @@ import {
   Check,
   Heart,
   Store,
-  Star,
   ArrowLeft,
   Tag,
   Ruler,
@@ -25,9 +24,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  ThumbsUp,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -247,12 +243,18 @@ export default function ProductDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  interface ReviewItem {
+    id: string;
+    helpfulCount: number;
+    [key: string]: unknown;
+  }
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [addedVariantId, setAddedVariantId] = useState<string | null>(null);
   const [wishlistToggling, setWishlistToggling] = useState(false);
 
   // Reviews state
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [averageRating, setAverageRating] = useState(0);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsPage, setReviewsPage] = useState(1);
@@ -266,7 +268,7 @@ export default function ProductDetailPage() {
     try {
       const res = await apiClient.get<{
         success: boolean;
-        data: { reviews: any[]; averageRating: number; totalReviews: number; totalPages: number };
+        data: { reviews: ReviewItem[]; averageRating: number; totalReviews: number; totalPages: number };
       }>(`/products/${productId}/reviews`, { params: { page: p, limit: 10 } });
       setReviews(res.data.data.reviews);
       setAverageRating(res.data.data.averageRating);
@@ -296,7 +298,7 @@ export default function ProductDetailPage() {
   };
 
   useEffect(() => {
-    setLoading(true);
+    /* eslint-disable react-hooks/set-state-in-effect */
     setError(null);
     clearSelectedProduct();
     Promise.all([
@@ -308,11 +310,13 @@ export default function ProductDetailPage() {
         setError(err instanceof Error ? err.message : "Failed to load product");
         setLoading(false);
       });
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [productId, fetchProductById, getWishlist, clearSelectedProduct]);
 
   // Load reviews when expanded
   useEffect(() => {
     if (showReviews && reviews.length === 0) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       loadReviews(1);
     }
   }, [showReviews, loadReviews, reviews.length]);
@@ -380,16 +384,14 @@ export default function ProductDetailPage() {
   }
 
   const product = selectedProduct;
-  const isInWishlist = wishlistItems.some((item) => (item as any).id === productId);
-  const wishlistItemId = wishlistItems.find((item) => (item as any).id === productId) as
-    | ({ wishlistItemId: string } & (typeof wishlistItems)[0])
-    | undefined;
+  const isInWishlist = wishlistItems.some((item) => item.id === productId);
+  const wishlistItem = wishlistItems.find((item) => item.id === productId);
 
   const handleWishlistToggle = async () => {
     setWishlistToggling(true);
     try {
-      if (isInWishlist && wishlistItemId) {
-        await removeWishlist(wishlistItemId.wishlistItemId);
+      if (isInWishlist && wishlistItem) {
+        await removeWishlist(wishlistItem.wishlistItemId);
         toast.success("Removed from wishlist");
       } else {
         await addWishlist(productId);

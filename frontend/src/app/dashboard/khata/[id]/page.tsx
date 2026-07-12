@@ -139,6 +139,16 @@ function TransactionList({
 
 // ─── Statements List ──────────────────────────────────────────────────────────
 
+interface KhataStatement {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  openingBalance: number;
+  closingBalance: number;
+  totalDebits: number;
+  totalCredits: number;
+}
+
 function StatementList({
   accountId,
   statements,
@@ -146,7 +156,7 @@ function StatementList({
   onRefresh,
 }: {
   accountId: string;
-  statements: any[];
+  statements: KhataStatement[];
   loading: boolean;
   onRefresh: () => void;
 }) {
@@ -216,7 +226,7 @@ function StatementList({
 
       {statements.length > 0 && (
         <div className="divide-y divide-gray-100 dark:divide-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-          {statements.map((stmt: any) => (
+          {statements.map((stmt: KhataStatement) => (
             <div key={stmt.id} className="flex items-center justify-between px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -335,7 +345,7 @@ function EditTermsForm({
   onUpdated,
   onCancel,
 }: {
-  account: any;
+  account: KhataAccount;
   onUpdated: () => void;
   onCancel: () => void;
 }) {
@@ -585,7 +595,7 @@ export default function KhataDetailPage() {
   const accountId = params.id as string;
 
   const { selectedAccount, isAccountLoading } = useKhataStore();
-  const [account, setAccount] = useState<any>(null);
+  const [account, setAccount] = useState<KhataAccount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -597,7 +607,7 @@ export default function KhataDetailPage() {
   const [txLoading, setTxLoading] = useState(false);
 
   // Statements
-  const [statements, setStatements] = useState<any[]>([]);
+  const [statements, setStatements] = useState<KhataStatement[]>([]);
   const [stmtsLoading, setStmtsLoading] = useState(false);
 
   // Requests
@@ -612,7 +622,7 @@ export default function KhataDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<{ success: boolean; data: any }>(`/khata/accounts/${accountId}`);
+      const res = await apiClient.get<{ success: boolean; data: KhataAccount }>(`/khata/accounts/${accountId}`);
       setAccount(res.data.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account");
@@ -642,7 +652,7 @@ export default function KhataDetailPage() {
   const loadStatements = useCallback(async () => {
     setStmtsLoading(true);
     try {
-      const res = await apiClient.get<{ success: boolean; data: any[] }>(`/khata/accounts/${accountId}/statements`);
+      const res = await apiClient.get<{ success: boolean; data: KhataStatement[] }>(`/khata/accounts/${accountId}/statements`);
       setStatements(res.data.data);
     } catch {
       // Silently fail
@@ -663,10 +673,12 @@ export default function KhataDetailPage() {
 
   // Initial load
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadAccount();
     loadTransactions(1);
     loadStatements();
     loadRequestsList();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [loadAccount, loadTransactions, loadStatements, loadRequestsList]);
 
   const refreshAll = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { useProductCatalogStore } from "@/stores/productCatalogStore";
@@ -55,10 +55,8 @@ const PRICE_RANGES = [
 
 function ProductCard({
   product,
-  onViewDetail,
 }: {
   product: ProductListItem;
-  onViewDetail: () => void;
 }) {
   const lowestPrice = getLowestPrice(product.variants);
   const highestPrice = getHighestPrice(product.variants);
@@ -68,6 +66,7 @@ function ProductCard({
     <div className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 dark:border-gray-700 bg-white dark:bg-gray-800 dark:bg-gray-800 shadow-sm dark:shadow-gray-950/30 transition-all hover:shadow-lg dark:shadow-gray-950/30 hover:border-emerald-200 dark:hover:border-emerald-700 dark:border-emerald-800 dark:hover:border-emerald-700">
       <div className="relative aspect-[4/3] overflow-hidden bg-gray-50 dark:bg-gray-700/50 dark:bg-gray-700/50">
         {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageUrl}
             alt={product.name}
@@ -146,12 +145,13 @@ export default function CategoryProductsPage() {
 
   // Fetch category info
   useEffect(() => {
-    setCatLoading(true);
+    /* eslint-disable react-hooks/set-state-in-effect */
     apiClient
       .get<{ success: boolean; data: Category }>(`/categories/${categoryId}`)
       .then((res) => setCategory(res.data.data))
       .catch(() => toast.error("Failed to load category"))
       .finally(() => setCatLoading(false));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [categoryId]);
 
   // Fetch products with filters
@@ -217,6 +217,7 @@ export default function CategoryProductsPage() {
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/50 dark:bg-emerald-900/50">
               {category?.iconUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={category.iconUrl}
                   alt=""
@@ -395,7 +396,6 @@ export default function CategoryProductsPage() {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onViewDetail={() => {}}
                 />
               ))}
             </div>

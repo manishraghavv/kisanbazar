@@ -139,7 +139,7 @@ function SuccessScreen({
         <div className="flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 dark:bg-emerald-900/30 px-4 py-2 text-sm">
           <Sparkles size={16} className="text-emerald-600 dark:text-emerald-400" />
           <span className="text-emerald-800 dark:text-emerald-300 font-medium">
-            You'll receive a confirmation shortly
+            You&apos;ll receive a confirmation shortly
           </span>
         </div>
 
@@ -203,6 +203,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!selectedAddressId && addresses.length > 0) {
       const defaultAddr = addresses.find((a) => a.isDefault) ?? addresses[0];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedAddressId(defaultAddr.id);
     }
   }, [addresses, selectedAddressId]);
