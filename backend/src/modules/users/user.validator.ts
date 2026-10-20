@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { STATE_CODES, isValidGstin, stateCodeFromGstin } from '../gst/states';
 
 export const updateProfileSchema = Joi.object({
   fullName: Joi.string().min(2).max(100).optional(),
@@ -18,14 +19,24 @@ export const updateFarmerProfileSchema = Joi.object({
 
 export const updateVendorProfileSchema = Joi.object({
   businessName: Joi.string().min(2).max(200).optional(),
+  // GSTIN: format plus a real state prefix; its first two digits must match `stateCode` when both are sent.
   gstNumber: Joi.string()
-    .pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/)
+    .custom((value: string, helpers) => (isValidGstin(value) ? value : helpers.error('any.invalid')))
     .optional()
-    .messages({ 'string.pattern.base': 'Enter a valid GST number' }),
+    .messages({ 'any.invalid': 'Enter a valid GST number' }),
+  stateCode: Joi.string()
+    .valid(...STATE_CODES)
+    .optional(),
+  businessAddress: Joi.string().min(5).max(300).optional(),
   panNumber: Joi.string()
     .pattern(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/)
     .optional()
     .messages({ 'string.pattern.base': 'Enter a valid PAN number' }),
+}).custom((value: { gstNumber?: string; stateCode?: string }, helpers) => {
+  if (value.gstNumber && value.stateCode && stateCodeFromGstin(value.gstNumber) !== value.stateCode) {
+    return helpers.message({ custom: 'GST number does not belong to the selected state' } as never);
+  }
+  return value;
 });
 
 export const adminUpdateUserSchema = Joi.object({

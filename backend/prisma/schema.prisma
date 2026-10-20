@@ -276,6 +276,11 @@ model Vendor {
 
   kycStatus KycStatus @default(PENDING)
 
+  // GST registration details (gstNumber above is the GSTIN)
+  stateCode       String? @db.VarChar(2) // seller's GST state code
+  businessAddress String?
+  invoicePrefix   String? @unique // short per-vendor invoice series prefix, e.g. "VA3F"
+
   commissionRate Decimal @db.Decimal(5, 2)
 
   tier             String? // bronze | silver | gold | platinum
@@ -298,6 +303,9 @@ model Vendor {
   bankAccounts VendorBankAccount[]
   settlements  VendorSettlement[]
   commissions  VendorCommission[]
+  subOrders    SubOrder[]
+  invoices     Invoice[]
+  coupons      Coupon[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -632,6 +640,7 @@ model Address {
   district     String?
   state        String
   pincode      String
+  stateCode    String?  @db.VarChar(2) // GST state code ("09" = Uttar Pradesh); drives place of supply
   geoLat       Decimal? @db.Decimal(10, 7)
   geoLng       Decimal? @db.Decimal(10, 7)
   isDefault    Boolean  @default(false)
@@ -660,6 +669,14 @@ model Order {
   discountAmount Decimal @default(0) @db.Decimal(8, 2)
   totalAmount    Decimal @db.Decimal(12, 2)
 
+  // GST summary (sum over sub-orders) and the buyer's place of supply
+  placeOfSupply String? @db.VarChar(2)
+  taxableValue  Decimal @default(0) @db.Decimal(12, 2)
+  cgstAmount    Decimal @default(0) @db.Decimal(12, 2)
+  sgstAmount    Decimal @default(0) @db.Decimal(12, 2)
+  igstAmount    Decimal @default(0) @db.Decimal(12, 2)
+
+  // Derived from the sub-orders (see deriveOrderStatus)
   status        OrderStatus   @default(PENDING)
   paymentMethod PaymentMethod
 
@@ -675,6 +692,7 @@ model Order {
   user    User    @relation(fields: [userId], references: [id])
   address Address @relation(fields: [addressId], references: [id])
 
+  subOrders         SubOrder[]
   items             OrderItem[]
   payments          Payment[]
   shipments         Shipment[]
@@ -704,26 +722,42 @@ model OrderItem {
   returnRequested  Boolean      @default(false)
   commissionAmount Decimal?     @db.Decimal(10, 2)
 
-  order   Order          @relation(fields: [orderId], references: [id])
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  // Sub-order (one per vendor) and the GST snapshot taken at checkout
+  subOrderId       String
+  hsnCode          String?
+  discountAmount   Decimal @default(0) @db.Decimal(10, 2) // coupon share allocated to this line
+  taxableValue     Decimal @default(0) @db.Decimal(12, 2)
+  cgstAmount       Decimal @default(0) @db.Decimal(10, 2)
+  sgstAmount       Decimal @default(0) @db.Decimal(10, 2)
+  igstAmount       Decimal @default(0) @db.Decimal(10, 2)
+  returnedQuantity Int     @default(0)
+
+  order       Order          @relation(fields: [orderId], references: [id])
+  subOrder    SubOrder       @relation(fields: [subOrderId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  returnItems ReturnItem[]
 
   @@index([orderId])
+  @@index([subOrderId])
   @@map("order_items")
 }
 
 model OrderStatusHistory {
-  id        String       @id @default(uuid())
-  orderId   String
-  oldStatus OrderStatus?
-  newStatus OrderStatus
-  remarks   String?
-  changedBy String?
+  id         String       @id @default(uuid())
+  orderId    String
+  subOrderId String?
+  oldStatus  OrderStatus?
+  newStatus  OrderStatus
+  remarks    String?
+  changedBy  String?
 
-  order Order @relation(fields: [orderId], references: [id])
+  order    Order     @relation(fields: [orderId], references: [id])
+  subOrder SubOrder? @relation(fields: [subOrderId], references: [id])
 
   changedAt DateTime @default(now())
 
   @@index([orderId])
+  @@index([subOrderId])
   @@map("order_status_history")
 }
 
@@ -734,6 +768,7 @@ model OrderStatusHistory {
 model Shipment {
   id               String    @id @default(uuid())
   orderId          String
+  subOrderId       String
   logisticsPartner String? // shiprocket | delhivery | self
   awbNumber        String? // Air Waybill / tracking ID
   pickupEta        DateTime?
@@ -742,13 +777,15 @@ model Shipment {
   deliveryAttempts Int       @default(0)
   currentStatus    String?
 
-  order  Order           @relation(fields: [orderId], references: [id])
-  events ShipmentEvent[]
+  order    Order           @relation(fields: [orderId], references: [id])
+  subOrder SubOrder        @relation(fields: [subOrderId], references: [id])
+  events   ShipmentEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([orderId])
+  @@index([subOrderId])
   @@map("shipments")
 }
 
@@ -824,13 +861,26 @@ model Refunds {
 }
 
 model Returns {
-  id        String   @id @default(uuid())
-  orderId   String
-  reason    String
-  photoUrls String[]
-  status    String   @default("REQUESTED") // REQUESTED | APPROVED | PICKED | REFUNDED
+  id            String    @id @default(uuid())
+  orderId       String
+  subOrderId    String?
+  requestedById String?
+  reason        String
+  photoUrls     String[]
+  // REQUESTED -> APPROVED -> RECEIVED -> REFUNDED | CREDITED   (or REJECTED)
+  status        String    @default("REQUESTED")
+  vendorNote    String?
+  restock       Boolean?
+  refundAmount  Decimal?  @db.Decimal(12, 2)
+  resolution    String? // WALLET | GATEWAY | KHATA | MIXED
+  approvedAt    DateTime?
+  receivedAt    DateTime?
+  resolvedAt    DateTime?
 
-  order Order @relation(fields: [orderId], references: [id])
+  order      Order        @relation(fields: [orderId], references: [id])
+  subOrder   SubOrder?    @relation(fields: [subOrderId], references: [id])
+  items      ReturnItem[]
+  creditNote Invoice?
 
   createdAt DateTime @default(now())
 
@@ -842,18 +892,21 @@ model VendorCommission {
   id               String  @id @default(uuid())
   vendorId         String
   orderId          String
+  subOrderId       String
   commissionRate   Decimal @db.Decimal(5, 2)
   grossAmount      Decimal @db.Decimal(12, 2)
   commissionAmount Decimal @db.Decimal(12, 2)
   netAmount        Decimal @db.Decimal(12, 2)
 
-  vendor Vendor @relation(fields: [vendorId], references: [id])
-  order  Order  @relation(fields: [orderId], references: [id])
+  vendor   Vendor   @relation(fields: [vendorId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id])
+  subOrder SubOrder @relation(fields: [subOrderId], references: [id])
 
   createdAt DateTime @default(now())
 
   @@index([vendorId])
   @@index([orderId])
+  @@index([subOrderId])
   @@map("vendor_commissions")
 }
 
@@ -911,24 +964,28 @@ model WishlistItem {
 // ─────────────────────────────────────────────
 
 model Coupon {
-  id              String     @id @default(uuid())
-  code            String     @unique
+  id              String        @id @default(uuid())
+  code            String        @unique
   title           String
   type            CouponType
-  value           Decimal    @db.Decimal(10, 2)
-  minimumAmount   Decimal?   @db.Decimal(10, 2)
-  maximumDiscount Decimal?   @db.Decimal(10, 2)
+  value           Decimal       @db.Decimal(10, 2)
+  minimumAmount   Decimal?      @db.Decimal(10, 2)
+  maximumDiscount Decimal?      @db.Decimal(10, 2)
   usageLimit      Int?
-  usedCount       Int        @default(0)
-  perUserLimit    Int        @default(1)
-  applicableTo    String     @default("ALL") // ALL | CATEGORY | VENDOR
+  usedCount       Int           @default(0)
+  perUserLimit    Int           @default(1)
+  applicableTo    String        @default("ALL") // ALL | CATEGORY | VENDOR
+  vendorId        String? // set when applicableTo = VENDOR: only that vendor's sub-orders qualify
+  usages          CouponUsage[]
+  vendor          Vendor?       @relation(fields: [vendorId], references: [id])
   startsAt        DateTime
   expiresAt       DateTime
-  isActive        Boolean    @default(true)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([code])
+  @@index([vendorId])
   @@map("coupons")
 }
 
@@ -1176,4 +1233,134 @@ model PaymentWebhookEvent {
   receivedAt DateTime @default(now())
 
   @@map("payment_webhook_events")
+}
+
+/// One row per redemption of a coupon by a user. `seq` runs 1..perUserLimit per (coupon, user), and the unique
+/// constraint makes exceeding the per-user limit impossible even if two checkouts race.
+model CouponUsage {
+  id        String   @id @default(uuid())
+  couponId  String
+  userId    String
+  seq       Int
+  orderId   String   @unique
+  createdAt DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+
+  @@unique([couponId, userId, seq])
+  @@index([couponId])
+  @@map("coupon_usages")
+}
+
+/// A vendor's slice of an order. Customers check out once; each vendor fulfils, ships, invoices and is paid for
+/// its own sub-order. The parent Order status is derived from its sub-orders.
+model SubOrder {
+  id             String      @id @default(uuid())
+  orderId        String
+  vendorId       String
+  subOrderNumber String      @unique // KB-2026-000123-1
+  status         OrderStatus @default(PENDING)
+
+  // GST context (null only on sub-orders created before Phase 3)
+  placeOfSupply   String? @db.VarChar(2)
+  sellerStateCode String? @db.VarChar(2)
+  isInterState    Boolean @default(false)
+
+  subtotal       Decimal @db.Decimal(12, 2) // sum of line totals, before discount and tax
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
+  taxableValue   Decimal @default(0) @db.Decimal(12, 2)
+  cgstAmount     Decimal @default(0) @db.Decimal(12, 2)
+  sgstAmount     Decimal @default(0) @db.Decimal(12, 2)
+  igstAmount     Decimal @default(0) @db.Decimal(12, 2)
+  gstAmount      Decimal @default(0) @db.Decimal(12, 2)
+  deliveryCharge Decimal @default(0) @db.Decimal(8, 2)
+  totalAmount    Decimal @db.Decimal(12, 2)
+
+  khataAccountId     String? // the buyer's khata with THIS vendor, when paid on credit
+  cancellationReason String?
+  deliveredAt        DateTime?
+
+  order         Order                @relation(fields: [orderId], references: [id])
+  vendor        Vendor               @relation(fields: [vendorId], references: [id])
+  items         OrderItem[]
+  shipments     Shipment[]
+  commissions   VendorCommission[]
+  statusHistory OrderStatusHistory[]
+  invoices      Invoice[]
+  returns       Returns[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, vendorId])
+  @@index([vendorId, status])
+  @@map("sub_orders")
+}
+
+/// Tax invoices and credit notes. Numbers are gapless per vendor, per financial year, per series (see InvoiceCounter).
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique // VA3F/2627/000001 (credit notes: VA3FC/2627/00001), at most 16 characters
+  type          String // TAX_INVOICE | CREDIT_NOTE
+  /// "INV:<subOrderId>" or "CN:<returnId>": at most one tax invoice per sub-order and one credit note per return
+  uniqueKey     String   @unique
+  vendorId      String
+  subOrderId    String
+  financialYear String // "2026-27"
+  seq           Int
+  issuedAt      DateTime @default(now())
+
+  originalInvoiceId String? // credit note -> the tax invoice it adjusts
+  returnId          String? @unique
+
+  sellerName      String
+  sellerGstin     String?
+  sellerStateCode String
+  sellerAddress   String?
+  buyerName       String
+  buyerAddress    String
+  placeOfSupply   String
+  isInterState    Boolean
+
+  taxableValue   Decimal @db.Decimal(12, 2)
+  cgstAmount     Decimal @db.Decimal(12, 2)
+  sgstAmount     Decimal @db.Decimal(12, 2)
+  igstAmount     Decimal @db.Decimal(12, 2)
+  deliveryCharge Decimal @default(0) @db.Decimal(8, 2)
+  totalAmount    Decimal @db.Decimal(12, 2)
+  lines          Json // snapshot of the invoiced lines
+
+  vendor   Vendor   @relation(fields: [vendorId], references: [id])
+  subOrder SubOrder @relation(fields: [subOrderId], references: [id])
+  return   Returns? @relation(fields: [returnId], references: [id])
+
+  @@unique([vendorId, type, financialYear, seq])
+  @@index([subOrderId])
+  @@map("invoices")
+}
+
+/// Gapless invoice numbering: the next number is allocated with a row-locking upsert inside the same transaction
+/// that creates the invoice, so a rolled-back invoice also rolls back its number.
+model InvoiceCounter {
+  vendorId      String
+  financialYear String
+  series        String // INV | CN
+  lastSeq       Int    @default(0)
+
+  @@id([vendorId, financialYear, series])
+  @@map("invoice_counters")
+}
+
+model ReturnItem {
+  id          String @id @default(uuid())
+  returnId    String
+  orderItemId String
+  quantity    Int
+
+  return    Returns   @relation(fields: [returnId], references: [id])
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@map("return_items")
 }

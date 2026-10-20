@@ -3,6 +3,7 @@ import { revokeUserAccess } from '../../common/lib/userAuthState';
 import { prisma } from '../../common/lib/prisma';
 import { NotFoundError, ConflictError, UnauthorizedError } from '../../common/errors';
 import { UserRole, UserStatus } from '@prisma/client';
+import { stateCodeFromGstin } from '../gst/states';
 
 export interface UpdateProfileInput {
   fullName?: string;
@@ -24,6 +25,8 @@ export interface UpdateVendorInput {
   businessName?: string;
   gstNumber?: string;
   panNumber?: string;
+  stateCode?: string;
+  businessAddress?: string;
 }
 
 export interface AdminUpdateUserInput {
@@ -213,12 +216,19 @@ export class UserService {
         ...(input.businessName && { businessName: input.businessName }),
         ...(input.gstNumber && { gstNumber: input.gstNumber }),
         ...(input.panNumber && { panNumber: input.panNumber }),
+        // The seller's GST state: explicit, else taken from the GSTIN prefix.
+        ...((input.stateCode || input.gstNumber) && {
+          stateCode: input.stateCode ?? stateCodeFromGstin(input.gstNumber!),
+        }),
+        ...(input.businessAddress && { businessAddress: input.businessAddress }),
       },
       select: {
         id: true,
         businessName: true,
         gstNumber: true,
         panNumber: true,
+        stateCode: true,
+        businessAddress: true,
         kycStatus: true,
         commissionRate: true,
         tier: true,

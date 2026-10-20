@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { STATE_CODES } from '../gst/states';
 
 export const createAddressSchema = Joi.object({
   label: Joi.string().max(50).optional(),
@@ -7,13 +8,17 @@ export const createAddressSchema = Joi.object({
   village: Joi.string().max(100).optional(),
   city: Joi.string().min(2).max(100).required(),
   district: Joi.string().max(100).optional(),
-  state: Joi.string().min(2).max(100).required(),
+  // GST state code (preferred). A plain state name is still accepted and mapped to its code by the service.
+  stateCode: Joi.string()
+    .valid(...STATE_CODES)
+    .optional(),
+  state: Joi.string().min(2).max(100).optional(),
   pincode: Joi.string()
     .length(6)
     .pattern(/^\d{6}$/)
     .required(),
   isDefault: Joi.boolean().optional(),
-});
+}).or('stateCode', 'state');
 
 export const updateAddressSchema = Joi.object({
   label: Joi.string().max(50).optional(),
@@ -22,6 +27,9 @@ export const updateAddressSchema = Joi.object({
   village: Joi.string().max(100).optional(),
   city: Joi.string().min(2).max(100).optional(),
   district: Joi.string().max(100).optional(),
+  stateCode: Joi.string()
+    .valid(...STATE_CODES)
+    .optional(),
   state: Joi.string().min(2).max(100).optional(),
   pincode: Joi.string()
     .length(6)

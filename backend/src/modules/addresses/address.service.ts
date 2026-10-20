@@ -1,5 +1,20 @@
 import { prisma } from '../../common/lib/prisma';
-import { NotFoundError } from '../../common/errors';
+import { BadRequestError, NotFoundError } from '../../common/errors';
+import { INDIAN_STATES, isValidStateCode } from '../gst/states';
+
+/**
+ * Every address carries a GST state code: it decides the buyer's place of supply (CGST+SGST vs IGST).
+ * Accepts a code, or a state name that is mapped to its code; the stored name always comes from the code.
+ */
+export function resolveState(input: { stateCode?: string; state?: string }): { stateCode: string; state: string } {
+  let code = input.stateCode;
+  if (!code && input.state) {
+    const wanted = input.state.trim().toLowerCase();
+    code = Object.entries(INDIAN_STATES).find(([, name]) => name.toLowerCase() === wanted)?.[0];
+  }
+  if (!code || !isValidStateCode(code)) throw new BadRequestError('Select a valid Indian state');
+  return { stateCode: code, state: INDIAN_STATES[code] };
+}
 
 export const AddressService = {
   async create(
@@ -11,12 +26,14 @@ export const AddressService = {
       village?: string;
       city: string;
       district?: string;
-      state: string;
+      state?: string;
+      stateCode?: string;
       pincode: string;
       isDefault?: boolean;
     },
   ) {
-    const { isDefault, ...rest } = data;
+    const { isDefault, state: _state, stateCode: _code, ...other } = data;
+    const rest = { ...other, ...resolveState(data) };
 
     if (isDefault) {
       await prisma.address.updateMany({
@@ -64,6 +81,7 @@ export const AddressService = {
       city?: string;
       district?: string;
       state?: string;
+      stateCode?: string;
       pincode?: string;
       isDefault?: boolean;
     },
@@ -71,7 +89,8 @@ export const AddressService = {
     const address = await prisma.address.findUnique({ where: { id } });
     if (!address || address.userId !== userId) throw new NotFoundError('Address not found');
 
-    const { isDefault, ...rest } = data;
+    const { isDefault, state: _state, stateCode: _code, ...other } = data;
+    const rest = { ...other, ...(data.state || data.stateCode ? resolveState(data) : {}) };
 
     if (isDefault) {
       await prisma.address.updateMany({
