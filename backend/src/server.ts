@@ -14,6 +14,7 @@ import { generalLimiter } from './common/middleware/rateLimiter';
 import { apiDocsGate, requireMetricsAccess } from './common/middleware/opsAccess';
 import { corsOriginCheck } from './common/config/cors';
 import { initSocket } from './common/lib/socket';
+import { buildHealthReport, isShuttingDown } from './common/lib/health';
 import { AuthRequest } from './common/types/express.d';
 import Joi from 'joi';
 
@@ -114,15 +115,26 @@ app.post('/api/coupons/auto-apply', (req, res, next) => {
 // ── Metrics Endpoint ────────────────────────────────────────────────────────
 app.get('/metrics', requireMetricsAccess, asyncHandler(metricsHandler));
 
-// ── Health Check ────────────────────────────────────────────────────────────
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    service: 'Multi-Vendor E-commerce Backend',
-    uptime: process.uptime(),
-  });
-});
+// ── Health / Readiness ──────────────────────────────────────────────────────
+// /health reports dependency status (DB, Redis); /ready additionally fails while shutting down.
+app.get(
+  '/health',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { httpStatus, report } = await buildHealthReport();
+    res.status(httpStatus).json(report);
+  }),
+);
+app.get(
+  '/ready',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const { httpStatus, report } = await buildHealthReport();
+    if (isShuttingDown()) {
+      res.status(503).json({ ...report, status: 'UNAVAILABLE', shuttingDown: true });
+      return;
+    }
+    res.status(httpStatus).json(report);
+  }),
+);
 
 // ── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((req: Request, res: Response) => {

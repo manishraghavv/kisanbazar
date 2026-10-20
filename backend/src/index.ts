@@ -1,6 +1,7 @@
 import './common/config/bootEnv'; // loads + validates env; must stay the first import
 import { httpServer, PORT } from './server';
 import { prisma } from './common/lib/prisma';
+import { markShuttingDown } from './common/lib/health';
 import { startCronJobs } from './jobs/cron';
 import { startWorkers, stopWorkers } from './jobs/workers';
 import { initQueues } from './jobs/queues';
@@ -37,6 +38,7 @@ async function main() {
 
 // ── Graceful Shutdown ─────────────────────────────────────────────────────────
 process.on('SIGINT', async () => {
+  markShuttingDown();
   console.log('\nShutting down gracefully...');
   await stopWorkers();
   await prisma.$disconnect();
@@ -44,6 +46,7 @@ process.on('SIGINT', async () => {
 });
 
 process.on('SIGTERM', async () => {
+  markShuttingDown();
   console.log('\nShutting down gracefully...');
   await stopWorkers();
   await prisma.$disconnect();
