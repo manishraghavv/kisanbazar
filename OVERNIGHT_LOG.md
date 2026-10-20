@@ -41,3 +41,32 @@
 - Run: `docker compose --profile test up -d postgres-test` then `npm test` (96 tests incl. 47 pre-existing unit tests).
 - Found & fixed while writing tests: **anyone could self-register as ADMIN** (`registerSchema` allowed ADMIN/DELIVERY). Now only FARMER/VENDOR (0f3afce). Admins come from the seed / DB; there is still no admin-provisioning endpoint.
 - `npm run typecheck:tests` typechecks `tests/` and `prisma/seed.ts`.
+
+### 7. Backend ESLint + Prettier — DONE (e385b2d, 114c784)
+- `eslint.config.mjs` (typescript-eslint recommended + eslint-config-prettier), `.prettierrc.json` (single quotes, 120 cols, trailing commas), scripts `lint`, `lint:fix`, `format`, `format:check`.
+- Fixed 3 errors (lazy `require`s now carry a justified disable) and unused imports. **0 errors, 9 warnings** (unused params in payment stubs / dead analytics vars in enterprise service, left for the phases that rewrite them).
+- `no-explicit-any` is OFF (≈180 legacy `any`s in services/repositories) — tracked tech debt, not hidden.
+- 114c784 is a pure Prettier reformat of the backend (no functional change) — review with `git diff -w` or skip it.
+
+### 9. /health + /ready — DONE (edcc0aa)
+- `/health`: 200 only if DB `SELECT 1` is up and Redis (if `REDIS_URL` is set) answers PING; otherwise 503 with `{checks:{database,redis}}`; Redis reports `disabled` when unconfigured. `/ready`: same checks, plus 503 once SIGTERM/SIGINT marks shutdown. Unit tests (injected checkers) + integration tests. Redis path verified manually against the docker Redis (up) and a dead port (down).
+- Docker HEALTHCHECK uses `/health`, so a Redis outage marks the container unhealthy (intentional: queues need it).
+
+### 8. Root CI — DONE (65aeda5)
+- `.github/workflows/ci.yml`: on `pull_request`, push to non-main branches, and `workflow_call`. Jobs: backend (Postgres 16 service; `prisma generate`, `prisma validate`, eslint, prettier check, tsc, tsc for tests, vitest unit+integration, build), frontend (eslint, tsc, vitest, next build), contract (`scripts/check-api-contract.mjs`).
+- `deploy.yml`: only change is a new `ci` job (`uses: ./.github/workflows/ci.yml`) and `needs: ci` on `lint-and-build`. Triggers/steps/secrets untouched. Removed dead `backend/.github/workflows/ci.yml`.
+- Not verifiable locally (needs GitHub): YAML parses; every command in the workflow was run locally.
+
+### 10. .env.example — DONE (f078bf9)
+- Rewritten from a grep of every `process.env.X` the code reads; unused vars moved to a "reserved" section; `OVERDUE_AUTO_SUSPEND_DAYS` → `OVERDUE_SUSPEND_DAYS` (what the code reads). Unit test `envExample.test.ts` fails if source reads a variable that is not documented.
+
+### 11. Housekeeping — DONE (def9ef4)
+- Removed 13 committed PNGs in `frontend/`, 14 empty `placeholder.ts`, `bull` (unused; `bullmq` kept, `ioredis` added as an explicit dep since `queues.ts` imports it), `@types/helmet`.
+- `npm audit` (real registry; the default registry here is a mirror without audit): backend 22 → 9, frontend 19 → 7 via in-range updates only (csv-parse, joi, morgan, multer, axios, qs, socket.io-parser, engine.io, proxy-addr, fast-uri, js-yaml, brace-expansion, hono, undici, browserslist, tailwind postcss) and **Next 16.2.9 → 16.4.2 (+ eslint-config-next)** for a critical advisory; frontend build/tests/lint verified on it.
+- Left: backend `prisma` 7.8.0 → 7.10.1 (CLI/dev-tooling chain; bumping pinned prisma+client+adapter was not "safe" unattended), `vitest` (dev), eslint-config-next→braces chain (dev). `npm audit fix` itself crashes on this tree (npm arborist bug with vitest peers), so updates were done package by package.
+- Both lockfiles resolve through `registry.npmmirror.com` (already the case before tonight). Works, but regenerate with the default registry when convenient.
+
+### 12. Frontend — DONE (67abbfe)
+- ESLint warnings 125 → 62 (0 errors): removed 53 unused imports/vars/params, fixed alt-text false positives (lucide `Image` icon renamed), `useMemo` dep. **Not changed: 20 `<img>` → `next/image`** because product images are user-supplied URLs from unknown hosts (needs `images.remotePatterns` decided by you) and ~40 destructured-but-unused pagination values.
+- Review fixes: (1) session no longer wiped on a network/5xx error during silent refresh (only 400/401/403); (2) checkout delivery estimate honours FREE_DELIVERY coupons; (3) register role enum matches the backend (FARMER/VENDOR).
+- **Found, not fixed in Phase 1 (fixed server-side in Part B if reached):** checkout shows a ₹40 delivery charge for subtotal < ₹500 but the backend charged whatever the client sent (nothing) → displayed total ≠ charged total; no online payment step exists (Razorpay out of scope).
