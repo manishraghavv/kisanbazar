@@ -36,7 +36,6 @@ export const createOrderSchema = Joi.object({
       otherwise: Joi.optional().allow(null),
     }),
   couponCode: Joi.string().optional().allow(''),
-  deliveryCharge: Joi.number().min(0).default(0),
   channel: Joi.string().valid('web', 'android', 'ios').optional(),
   notes: Joi.string().max(500).optional(),
 });

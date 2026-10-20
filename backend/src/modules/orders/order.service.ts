@@ -2,22 +2,9 @@ import { Prisma, OrderStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
 import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '../../common/errors';
 import PDFDocument from 'pdfkit';
-
-async function generateOrderNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `KB-${year}-`;
-  const lastOrder = await prisma.order.findFirst({
-    where: { orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: 'desc' },
-    select: { orderNumber: true },
-  });
-  let nextSeq = 1;
-  if (lastOrder) {
-    const num = parseInt(lastOrder.orderNumber.split('-')[2] || '0', 10);
-    nextSeq = num + 1;
-  }
-  return `${prefix}${String(nextSeq).padStart(6, '0')}`;
-}
+import { LEDGER_TX_OPTIONS, postKhataEntry } from '../khata/khata.ledger';
+import { creditWallet, debitWallet } from '../payments/wallet.ledger';
+import { computeCouponDiscount, computeDeliveryCharge } from './pricing';
 
 export const InvoiceService = {
   async generateInvoice(orderId: string, userId: string, requesterRole: string): Promise<PDFKit.PDFDocument> {
@@ -454,7 +441,6 @@ export const OrderService = {
       paymentMethod: string;
       khataAccountId?: string | null;
       couponCode?: string;
-      deliveryCharge?: number;
       channel?: string;
     },
   ) {
@@ -478,76 +464,97 @@ export const OrderService = {
     const address = await prisma.address.findUnique({ where: { id: data.addressId } });
     if (!address || address.userId !== userId) throw new NotFoundError('Address not found');
 
-    let subtotal = new Prisma.Decimal(0);
-    let gstAmount = new Prisma.Decimal(0);
-    const orderItemsData: Array<{
-      variantId: string;
-      quantity: number;
-      unitPrice: Prisma.Decimal;
-      gstRate: Prisma.Decimal;
-      commissionAmount?: Prisma.Decimal;
-      vendorId: string;
-    }> = [];
-    for (const item of cart.items) {
-      const variant = item.variant;
-      const available = variant.stockQuantity - variant.reservedQty;
-      if (available < item.quantity)
-        throw new BadRequestError(`Insufficient stock for ${variant.sku}. Available: ${available}`);
-      const unitPrice = variant.sellingPrice;
-      const lineTotal = unitPrice.mul(item.quantity);
-      subtotal = subtotal.add(lineTotal);
-      const productGstRate = variant.product.gstRate || new Prisma.Decimal(0);
-      gstAmount = gstAmount.add(lineTotal.mul(productGstRate).div(100));
-      const commissionRate = variant.product.vendor.commissionRate;
-      orderItemsData.push({
-        variantId: variant.id,
-        quantity: item.quantity,
-        unitPrice,
-        gstRate: productGstRate,
-        commissionAmount: lineTotal.mul(commissionRate).div(100),
-        vendorId: variant.product.vendorId,
-      });
-    }
+    const [{ n: orderSeq }] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT nextval('order_number_seq') AS n`;
+    const orderNumber = `KB-${new Date().getFullYear()}-${String(orderSeq).padStart(6, '0')}`;
 
-    let discountAmount = new Prisma.Decimal(0);
-    if (data.couponCode) {
-      const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode } });
-      if (!coupon) throw new NotFoundError('Coupon not found');
-      if (!coupon.isActive || coupon.expiresAt < new Date() || coupon.startsAt > new Date())
-        throw new BadRequestError('Coupon is not valid');
-      if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit)
-        throw new BadRequestError('Coupon usage limit reached');
-      if (subtotal.lt(coupon.minimumAmount || 0))
-        throw new BadRequestError(`Minimum order amount of ₹${coupon.minimumAmount} not met`);
-      if (coupon.type === 'PERCENTAGE') {
-        discountAmount = subtotal.mul(coupon.value).div(100);
-        if (coupon.maximumDiscount && discountAmount.gt(coupon.maximumDiscount))
-          discountAmount = coupon.maximumDiscount;
-      } else {
-        discountAmount = coupon.value;
-      }
-      await prisma.coupon.update({ where: { id: coupon.id }, data: { usedCount: { increment: 1 } } });
-    }
-
-    const deliveryCharge = new Prisma.Decimal(data.deliveryCharge || 0);
-    const totalAmount = subtotal.add(gstAmount).add(deliveryCharge).sub(discountAmount);
-    if (data.paymentMethod === 'KHATA_CREDIT') {
-      if (!data.khataAccountId) throw new BadRequestError('Khata account ID required for credit payment');
-      const khata = await prisma.khataAccount.findUnique({ where: { id: data.khataAccountId } });
-      if (!khata) throw new NotFoundError('Khata account not found');
-      if (khata.status !== 'ACTIVE') throw new BadRequestError('Khata account is not active');
-      if (khata.outstandingAmount.add(totalAmount).gt(khata.creditLimitAmount))
-        throw new BadRequestError(`Khata credit limit exceeded`);
-    }
-
-    const orderNumber = await generateOrderNumber();
+    // Everything that must hold together happens in ONE interactive transaction: stock, coupon usage,
+    // payment (wallet/khata) and the order itself. Any failure rolls all of it back.
+    // Lock order is always variants (by id) → coupon → khata account / wallet, so concurrent orders cannot deadlock.
     const order = await prisma.$transaction(async (tx) => {
-      for (const item of cart.items) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stockQuantity: { decrement: item.quantity }, reservedQty: { decrement: item.quantity } },
+      // 0. Claim the cart. Deleting the rows takes their locks, so a double-submit (or two tabs) that raced past
+      // the read above blocks here, finds nothing left to delete, and fails instead of ordering the cart twice.
+      const claimed = await tx.cartItem.deleteMany({ where: { id: { in: cart.items.map((i) => i.id) } } });
+      if (claimed.count !== cart.items.length) throw new ConflictError('Cart was changed or already checked out');
+
+      // 1. Atomically take stock. The WHERE clause is the guard: no row updated means not enough stock.
+      const items = [...cart.items].sort((a, b) => a.variantId.localeCompare(b.variantId));
+      const prices = new Map<string, Prisma.Decimal>();
+      for (const item of items) {
+        const taken = await tx.$queryRaw<Array<{ sellingPrice: Prisma.Decimal }>>`
+          UPDATE "product_variants"
+          SET "stockQuantity" = "stockQuantity" - ${item.quantity}, "updatedAt" = now()
+          WHERE "id" = ${item.variantId} AND "stockQuantity" - "reservedQty" >= ${item.quantity}
+          RETURNING "sellingPrice"`;
+        if (taken.length === 0) throw new BadRequestError(`Insufficient stock for ${item.variant.sku}`);
+        prices.set(item.variantId, new Prisma.Decimal(taken[0].sellingPrice));
+      }
+
+      // 2. Price the order from the locked rows.
+      let subtotal = new Prisma.Decimal(0);
+      let gstAmount = new Prisma.Decimal(0);
+      const orderItemsData: Array<{
+        variantId: string;
+        quantity: number;
+        unitPrice: Prisma.Decimal;
+        gstRate: Prisma.Decimal;
+        commissionAmount: Prisma.Decimal;
+        vendorId: string;
+      }> = [];
+      for (const item of items) {
+        const unitPrice = prices.get(item.variantId)!;
+        const lineTotal = unitPrice.mul(item.quantity);
+        subtotal = subtotal.add(lineTotal);
+        const productGstRate = item.variant.product.gstRate || new Prisma.Decimal(0);
+        gstAmount = gstAmount.add(lineTotal.mul(productGstRate).div(100));
+        orderItemsData.push({
+          variantId: item.variantId,
+          quantity: item.quantity,
+          unitPrice,
+          gstRate: productGstRate,
+          commissionAmount: lineTotal.mul(item.variant.product.vendor.commissionRate).div(100),
+          vendorId: item.variant.product.vendorId,
         });
       }
+
+      // 3. Coupon: validity checks, then a conditional increment so the usage limit can never be exceeded.
+      let discountAmount = new Prisma.Decimal(0);
+      let couponType: string | null = null;
+      if (data.couponCode) {
+        const coupon = await tx.coupon.findUnique({ where: { code: data.couponCode } });
+        if (!coupon) throw new NotFoundError('Coupon not found');
+        const now = new Date();
+        if (!coupon.isActive || coupon.expiresAt < now || coupon.startsAt > now)
+          throw new BadRequestError('Coupon is not valid');
+        if (subtotal.lt(coupon.minimumAmount || 0))
+          throw new BadRequestError(`Minimum order amount of ₹${coupon.minimumAmount} not met`);
+        const claimed = await tx.$executeRaw`
+          UPDATE "coupons" SET "usedCount" = "usedCount" + 1, "updatedAt" = now()
+          WHERE "id" = ${coupon.id} AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
+        if (claimed === 0) throw new BadRequestError('Coupon usage limit reached');
+        couponType = coupon.type;
+        discountAmount = computeCouponDiscount(subtotal, coupon);
+      }
+
+      // 4. Server-side delivery charge; the client value (if any) is ignored.
+      const deliveryCharge = computeDeliveryCharge(subtotal, couponType);
+      const grossTotal = subtotal.add(gstAmount).add(deliveryCharge).sub(discountAmount);
+      const totalAmount = grossTotal.lt(0) ? new Prisma.Decimal(0) : grossTotal.toDecimalPlaces(2);
+
+      // 5. Khata credit: the account must be the caller's, active, and tied to the same vendor as every item.
+      let khataAccountId: string | null = null;
+      if (data.paymentMethod === 'KHATA_CREDIT') {
+        if (!data.khataAccountId) throw new BadRequestError('Khata account ID required for credit payment');
+        const khata = await tx.khataAccount.findUnique({
+          where: { id: data.khataAccountId },
+          include: { farmer: { select: { userId: true } } },
+        });
+        if (!khata || khata.farmer.userId !== userId) throw new NotFoundError('Khata account not found');
+        if (khata.status !== 'ACTIVE') throw new BadRequestError('Khata account is not active');
+        if (orderItemsData.some((oi) => oi.vendorId !== khata.vendorId))
+          throw new BadRequestError('Khata credit can only be used for items sold by the khata vendor');
+        khataAccountId = khata.id;
+      }
+
       const newOrder = await tx.order.create({
         data: {
           orderNumber,
@@ -562,7 +569,7 @@ export const OrderService = {
           paymentMethod: data.paymentMethod as PaymentMethod,
           couponCode: data.couponCode,
           channel: data.channel,
-          khataAccountId: data.paymentMethod === 'KHATA_CREDIT' ? data.khataAccountId : null,
+          khataAccountId,
           items: {
             create: orderItemsData.map((oi) => ({
               variantId: oi.variantId,
@@ -585,9 +592,9 @@ export const OrderService = {
         const lineTotal = oi.unitPrice.mul(oi.quantity);
         if (existing) {
           existing.grossAmount = existing.grossAmount.add(lineTotal);
-          existing.commissionAmount = existing.commissionAmount.add(oi.commissionAmount!);
+          existing.commissionAmount = existing.commissionAmount.add(oi.commissionAmount);
         } else {
-          vendorGroups.set(oi.vendorId, { grossAmount: lineTotal, commissionAmount: oi.commissionAmount! });
+          vendorGroups.set(oi.vendorId, { grossAmount: lineTotal, commissionAmount: oi.commissionAmount });
         }
       }
       for (const [vendorId, values] of vendorGroups) {
@@ -604,44 +611,29 @@ export const OrderService = {
         });
       }
 
-      if (data.paymentMethod === 'WALLET') {
-        const wallet = await tx.wallet.findUnique({ where: { userId } });
-        if (!wallet) throw new BadRequestError('Wallet not found');
-        if (wallet.balance.lt(totalAmount)) throw new BadRequestError('Insufficient wallet balance');
-        await tx.wallet.update({ where: { id: wallet.id }, data: { balance: { decrement: totalAmount } } });
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: 'DEBIT',
-            amount: totalAmount,
-            balanceAfter: wallet.balance.sub(totalAmount),
-            remarks: `Order ${orderNumber} — held until delivery`,
-            referenceId: newOrder.id,
-          },
+      // 6. Payment legs, under row locks. Both throw (and roll everything back) if the money is not there.
+      if (data.paymentMethod === 'WALLET' && totalAmount.gt(0)) {
+        await debitWallet(tx, userId, totalAmount, {
+          remarks: `Order ${orderNumber} — held until delivery`,
+          referenceId: newOrder.id,
+          idempotencyKey: `order-wallet:${orderNumber}`,
         });
       }
-      if (data.paymentMethod === 'KHATA_CREDIT' && data.khataAccountId) {
-        const khataAccount = await tx.khataAccount.findUnique({ where: { id: data.khataAccountId } });
-        const newBalance = khataAccount!.outstandingAmount.add(totalAmount);
-        await tx.khataTransaction.create({
-          data: {
-            khataAccountId: data.khataAccountId,
-            type: 'ORDER_LINKED',
-            amount: totalAmount,
-            balanceAfter: newBalance,
-            linkedOrderId: newOrder.id,
-            performedById: userId,
-            remarks: `Auto-created from order ${orderNumber}`,
-          },
-        });
-        await tx.khataAccount.update({
-          where: { id: data.khataAccountId },
-          data: { outstandingAmount: newBalance, lastTransactionAt: new Date() },
+      if (khataAccountId && totalAmount.gt(0)) {
+        await postKhataEntry(tx, {
+          accountId: khataAccountId,
+          type: 'ORDER_LINKED',
+          amount: totalAmount,
+          performedById: userId,
+          linkedOrderId: newOrder.id,
+          remarks: `Auto-created from order ${orderNumber}`,
+          idempotencyKey: `order-khata:${orderNumber}`,
+          allowedStatuses: ['ACTIVE'],
         });
       }
+
       return newOrder;
-    });
-    await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+    }, LEDGER_TX_OPTIONS);
     return order;
   },
 
@@ -662,21 +654,14 @@ export const OrderService = {
         },
       });
     } else if (['CANCELLED', 'REFUNDED'].includes(newStatus) && order.status !== newStatus) {
-      const wallet = await prisma.wallet.findUnique({ where: { userId: order.userId } });
-      if (wallet) {
-        const newBalance = wallet.balance.add(order.totalAmount);
-        await prisma.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } });
-        await prisma.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: 'CREDIT',
-            amount: order.totalAmount,
-            balanceAfter: newBalance,
-            remarks: `Refund for cancelled order ${order.orderNumber}`,
-            referenceId: order.id,
-          },
+      // The idempotency key makes this and cancel() share one refund per order.
+      await prisma.$transaction(async (tx) => {
+        await creditWallet(tx, order.userId, order.totalAmount, {
+          remarks: `Refund for cancelled order ${order.orderNumber}`,
+          referenceId: order.id,
+          idempotencyKey: `order-refund:${order.orderNumber}`,
         });
-      }
+      }, LEDGER_TX_OPTIONS);
     }
   },
 
@@ -771,53 +756,44 @@ export const OrderService = {
       throw new BadRequestError(`Order cannot be cancelled in ${order.status} status`);
 
     await prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
+      // Conditional transition: of two concurrent cancels exactly one wins, so stock and money are returned once.
+      const moved = await tx.order.updateMany({
+        where: { id: orderId, status: { in: cancellableStatuses } },
+        data: { status: 'CANCELLED', cancellationReason: reason },
+      });
+      if (moved.count === 0) throw new BadRequestError('Order can no longer be cancelled');
+
+      for (const item of [...order.items].sort((a, b) => a.variantId.localeCompare(b.variantId))) {
         await tx.productVariant.update({
           where: { id: item.variantId },
           data: { stockQuantity: { increment: item.quantity } },
         });
       }
-      await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED', cancellationReason: reason } });
       await tx.orderStatusHistory.create({
         data: { orderId, oldStatus: order.status, newStatus: 'CANCELLED', changedBy: userId, remarks: reason },
       });
-      if (order.paymentMethod === 'WALLET') {
-        const wallet = await tx.wallet.findUnique({ where: { userId } });
-        if (wallet) {
-          const newBalance = wallet.balance.add(order.totalAmount);
-          await tx.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } });
-          await tx.walletTransaction.create({
-            data: {
-              walletId: wallet.id,
-              type: 'CREDIT',
-              amount: order.totalAmount,
-              balanceAfter: newBalance,
-              remarks: `Refund for cancelled order ${order.orderNumber}`,
-              referenceId: order.id,
-            },
-          });
-        }
-      }
-      if (order.paymentMethod === 'KHATA_CREDIT' && order.khataAccountId) {
-        const khataAccount = await tx.khataAccount.findUnique({ where: { id: order.khataAccountId } });
-        const newKhataBalance = khataAccount!.outstandingAmount.sub(order.totalAmount);
-        await tx.khataAccount.update({
-          where: { id: order.khataAccountId },
-          data: { outstandingAmount: newKhataBalance },
-        });
-        await tx.khataTransaction.create({
-          data: {
-            khataAccountId: order.khataAccountId,
-            type: 'WAIVER',
-            amount: order.totalAmount,
-            balanceAfter: newKhataBalance,
-            linkedOrderId: orderId,
-            performedById: userId,
-            remarks: `Order ${order.orderNumber} cancelled — credit reversed`,
-          },
+      if (order.paymentMethod === 'WALLET' && order.totalAmount.gt(0)) {
+        await creditWallet(tx, userId, order.totalAmount, {
+          remarks: `Refund for cancelled order ${order.orderNumber}`,
+          referenceId: order.id,
+          idempotencyKey: `order-refund:${order.orderNumber}`,
         });
       }
-    });
+      if (order.paymentMethod === 'KHATA_CREDIT' && order.khataAccountId && order.totalAmount.gt(0)) {
+        // Clamped: if the farmer already repaid part of the balance, reverse only what is still owed.
+        await postKhataEntry(tx, {
+          accountId: order.khataAccountId,
+          type: 'WAIVER',
+          amount: order.totalAmount,
+          performedById: userId,
+          linkedOrderId: orderId,
+          remarks: `Order ${order.orderNumber} cancelled — credit reversed`,
+          idempotencyKey: `order-cancel:${order.orderNumber}`,
+          allowedStatuses: ['ACTIVE', 'OVERDUE', 'SETTLED', 'SUSPENDED', 'WRITTEN_OFF'],
+          clampCredit: true,
+        });
+      }
+    }, LEDGER_TX_OPTIONS);
   },
 
   async requestReturn(orderId: string, userId: string, data: { reason: string; photoUrls?: string[] }) {
