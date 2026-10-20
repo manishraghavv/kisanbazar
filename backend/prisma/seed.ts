@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { stateName } from '../src/modules/gst/states';
 
 if (process.env.NODE_ENV === 'production') {
   console.error('[seed] Refusing to seed with NODE_ENV=production.');
@@ -65,19 +66,46 @@ async function main() {
 
   // ── Vendors ──────────────────────────────────────────────
   const vendorDefs = [
-    { phone: '9000000011', name: 'Ramesh Kumar', business: 'Kisan Seeds & Fertilizers', gst: '09AAAAA0000A1Z5' },
-    { phone: '9000000012', name: 'Sunita Devi', business: 'Green Valley Agro Store', gst: '09BBBBB0000B1Z6' },
+    // Three sellers in three different states, so seeded data exercises both GST regimes:
+    //   buyer in Uttar Pradesh -> vendor 0 is intra-state (CGST+SGST); vendors 1 and 2 are inter-state (IGST).
+    {
+      phone: '9000000011',
+      name: 'Ramesh Kumar',
+      business: 'Kisan Seeds & Fertilizers',
+      gst: '09AAAAA0000A1Z5',
+      stateCode: '09',
+      address: '12 Mandi Road, Meerut, Uttar Pradesh - 250001',
+    },
+    {
+      phone: '9000000012',
+      name: 'Sunita Devi',
+      business: 'Green Valley Agro Store',
+      gst: '27AAPFU0939F1ZV',
+      stateCode: '27',
+      address: '45 MIDC Industrial Area, Pune, Maharashtra - 411019',
+    },
+    {
+      phone: '9000000013',
+      name: 'Anil Gowda',
+      business: 'Deccan Irrigation & Tools',
+      gst: '29AABCT1332L1ZU',
+      stateCode: '29',
+      address: '8 Peenya Industrial Estate, Bengaluru, Karnataka - 560058',
+    },
   ];
   const vendors = [];
   for (const v of vendorDefs) {
     const user = await upsertUser(v.phone, v.name, 'VENDOR', pw('VENDOR'));
     const vendor = await prisma.vendor.upsert({
       where: { userId: user.id },
-      update: {},
+      // Keep the GST identity in sync on re-runs (older seeds had no state).
+      update: { stateCode: v.stateCode, gstNumber: v.gst, businessAddress: v.address },
       create: {
         userId: user.id,
         businessName: v.business,
         gstNumber: v.gst,
+        stateCode: v.stateCode,
+        businessAddress: v.address,
         kycStatus: 'APPROVED',
         commissionRate: D(8),
         industryId: industry.id,
@@ -89,9 +117,37 @@ async function main() {
 
   // ── Farmers ──────────────────────────────────────────────
   const farmerDefs = [
-    { phone: '9000000021', name: 'Mohan Singh', village: 'Rampur', district: 'Meerut', crops: ['wheat', 'sugarcane'] },
-    { phone: '9000000022', name: 'Gita Yadav', village: 'Kheda', district: 'Agra', crops: ['rice', 'mustard'] },
-    { phone: '9000000023', name: 'Harpreet Gill', village: 'Dhuri', district: 'Sangrur', crops: ['wheat', 'cotton'] },
+    // Buyers in the same three states as the sellers: the place of supply decides CGST+SGST vs IGST.
+    {
+      phone: '9000000021',
+      name: 'Mohan Singh',
+      village: 'Rampur',
+      district: 'Meerut',
+      crops: ['wheat', 'sugarcane'],
+      stateCode: '09',
+      city: 'Meerut',
+      pincode: '250001',
+    },
+    {
+      phone: '9000000022',
+      name: 'Gita Yadav',
+      village: 'Kheda',
+      district: 'Pune',
+      crops: ['rice', 'mustard'],
+      stateCode: '27',
+      city: 'Pune',
+      pincode: '411001',
+    },
+    {
+      phone: '9000000023',
+      name: 'Harpreet Gill',
+      village: 'Dhuri',
+      district: 'Bengaluru Rural',
+      crops: ['wheat', 'cotton'],
+      stateCode: '29',
+      city: 'Bengaluru',
+      pincode: '560001',
+    },
   ];
   const farmers = [];
   for (const f of farmerDefs) {
@@ -103,12 +159,39 @@ async function main() {
         userId: user.id,
         village: f.village,
         district: f.district,
-        state: 'Uttar Pradesh',
+        state: stateName(f.stateCode),
         primaryCrops: f.crops,
         landAreaAcres: D(4.5),
       },
     });
-    await prisma.wallet.upsert({ where: { userId: user.id }, update: {}, create: { userId: user.id } });
+    // Dev wallet balance so wallet checkout can be tried straight away.
+    await prisma.wallet.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id, balance: D(5000) },
+    });
+    // One delivery address per farmer, with its GST state code.
+    const hasAddress = await prisma.address.findFirst({ where: { userId: user.id } });
+    if (!hasAddress) {
+      await prisma.address.create({
+        data: {
+          userId: user.id,
+          label: 'Home (seed)',
+          addressLine1: `${f.village} Village`,
+          city: f.city,
+          district: f.district,
+          state: stateName(f.stateCode)!,
+          stateCode: f.stateCode,
+          pincode: f.pincode,
+          isDefault: true,
+        },
+      });
+    } else if (!hasAddress.stateCode) {
+      await prisma.address.update({
+        where: { id: hasAddress.id },
+        data: { stateCode: f.stateCode, state: stateName(f.stateCode)! },
+      });
+    }
     farmers.push(farmer);
   }
 
@@ -199,6 +282,29 @@ async function main() {
       unit: 'piece',
       variants: [{ sku: 'SPRAYER-16L', name: '16 L knapsack', mrp: 1800, price: 1650, stock: 60 }],
     },
+    // Vendor 2 (Karnataka): different GST slabs (12% and 5%) for mixed-rate carts
+    {
+      slug: 'drip-irrigation-kit',
+      name: 'Drip Irrigation Kit (1 acre)',
+      nameHi: 'ड्रिप सिंचाई किट',
+      cat: 'tools',
+      v: 2,
+      hsn: '8424',
+      gst: 12,
+      unit: 'piece',
+      variants: [{ sku: 'DRIP-1ACRE', name: '1 acre kit', mrp: 14500, price: 12900, stock: 25 }],
+    },
+    {
+      slug: 'vermicompost',
+      name: 'Vermicompost',
+      nameHi: 'वर्मी कम्पोस्ट',
+      cat: 'fertilizers',
+      v: 2,
+      hsn: '3101',
+      gst: 5,
+      unit: 'bag',
+      variants: [{ sku: 'VERMI-25KG', name: '25 kg bag', mrp: 450, price: 380, stock: 120 }],
+    },
   ];
   for (const p of productDefs) {
     const product = await prisma.product.upsert({
@@ -265,6 +371,23 @@ async function main() {
       usageLimit: null,
     },
   ];
+  // A coupon that only discounts one seller (vendor 1) - exercises vendor-scoped coupons across sub-orders.
+  await prisma.coupon.upsert({
+    where: { code: 'GREENVALLEY50' },
+    update: {},
+    create: {
+      code: 'GREENVALLEY50',
+      title: '₹50 off Green Valley Agro Store products',
+      type: 'FIXED',
+      value: D(50),
+      minimumAmount: D(200),
+      applicableTo: 'VENDOR',
+      vendorId: vendors[1].id,
+      perUserLimit: 3,
+      startsAt: now,
+      expiresAt: inOneYear,
+    },
+  });
   for (const c of couponDefs) {
     await prisma.coupon.upsert({
       where: { code: c.code },
@@ -288,6 +411,9 @@ async function main() {
     { vendor: 0, farmer: 0, limit: 50000, interest: 12 },
     { vendor: 0, farmer: 1, limit: 30000, interest: 12 },
     { vendor: 1, farmer: 2, limit: 40000, interest: 10 },
+    // Farmer 0 has khata with all three sellers: a mixed-vendor cart can be paid on credit per vendor.
+    { vendor: 1, farmer: 0, limit: 20000, interest: 12 },
+    { vendor: 2, farmer: 0, limit: 25000, interest: 12 },
   ];
   for (const k of khataDefs) {
     await prisma.khataAccount.upsert({
@@ -304,7 +430,7 @@ async function main() {
   }
 
   console.log(
-    '[seed] done. Dev logins (phone / password): admin 9000000001, vendors 9000000011-12, farmers 9000000021-23',
+    '[seed] done. Dev logins (phone / password): admin 9000000001, vendors 9000000011-13 (UP, MH, KA), farmers 9000000021-23 (UP, MH, KA)',
   );
   console.log(
     `[seed] password: ${process.env.SEED_PASSWORD || process.env.SEED_ADMIN_PASSWORD ? '(from SEED_* env)' : DEV_DEFAULT_PASSWORD}`,
