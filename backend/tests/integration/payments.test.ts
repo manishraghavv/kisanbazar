@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Prisma } from '@prisma/client';
 import {
   FAKE_GATEWAY_SECRET,
   FakeGateway,

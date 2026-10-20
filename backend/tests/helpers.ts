@@ -55,9 +55,26 @@ export async function createAdminAndLogin(): Promise<TestUser> {
 }
 
 /** Creates a vendor + category + product + variant straight in the DB. */
-export async function createCatalogItem(opts: { stock?: number; price?: number } = {}) {
+export async function createCatalogItem(
+  opts: {
+    stock?: number;
+    price?: number;
+    gstRate?: number;
+    vendorState?: string | null;
+    commissionRate?: number;
+    hsnCode?: string;
+  } = {},
+) {
   const vendorUser = await registerAndLogin('VENDOR');
-  const vendor = await prisma.vendor.findUniqueOrThrow({ where: { userId: vendorUser.id } });
+  const vendor = await prisma.vendor.update({
+    where: { userId: vendorUser.id },
+    data: {
+      stateCode: opts.vendorState === undefined ? '09' : opts.vendorState,
+      businessName: `Vendor ${vendorUser.phoneNumber}`,
+      gstNumber: null,
+      ...(opts.commissionRate !== undefined ? { commissionRate: opts.commissionRate } : {}),
+    },
+  });
   const suffix = randomUUID().slice(0, 8);
   const category = await prisma.category.create({ data: { name: `Cat ${suffix}`, slug: `cat-${suffix}` } });
   const product = await prisma.product.create({
@@ -68,7 +85,8 @@ export async function createCatalogItem(opts: { stock?: number; price?: number }
       slug: `product-${suffix}`,
       status: 'ACTIVE',
       moderationStatus: 'APPROVED',
-      gstRate: 5,
+      gstRate: opts.gstRate ?? 5,
+      hsnCode: opts.hsnCode ?? '3102',
     },
   });
   const variant = await prisma.productVariant.create({
@@ -86,13 +104,20 @@ export async function createCatalogItem(opts: { stock?: number; price?: number }
 // ── Direct-to-DB fixtures (fast: no HTTP, no bcrypt) for concurrency tests ───────────────────────────
 
 /** A farmer with a farmer profile, an address and a wallet. */
-export async function createFarmerDirect(opts: { walletBalance?: number } = {}) {
+export async function createFarmerDirect(opts: { walletBalance?: number; stateCode?: string } = {}) {
   const user = await prisma.user.create({
     data: { fullName: 'Direct Farmer', phoneNumber: uniquePhone(), role: 'FARMER', isPhoneVerified: true },
   });
   const farmer = await prisma.farmer.create({ data: { userId: user.id } });
   const address = await prisma.address.create({
-    data: { userId: user.id, addressLine1: '1 Test Road', city: 'Meerut', state: 'Uttar Pradesh', pincode: '250001' },
+    data: {
+      userId: user.id,
+      addressLine1: '1 Test Road',
+      city: 'Meerut',
+      state: 'Uttar Pradesh',
+      stateCode: opts.stateCode ?? '09',
+      pincode: '250001',
+    },
   });
   await prisma.wallet.create({ data: { userId: user.id, balance: opts.walletBalance ?? 0 } });
   return { user, farmer, address };

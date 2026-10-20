@@ -146,7 +146,7 @@ describe('order creation under concurrency', () => {
     await fillCart(owner.user.id, [{ variantId: other.variant.id, quantity: 1 }]);
     await expect(
       place(owner.user.id, owner.address.id, { paymentMethod: 'KHATA_CREDIT', khataAccountId: account.id }),
-    ).rejects.toThrow(/khata vendor/);
+    ).rejects.toThrow(/not with a seller/i);
     expect(
       (await prisma.khataAccount.findUniqueOrThrow({ where: { id: account.id } })).outstandingAmount.toString(),
     ).toBe('0');
@@ -164,7 +164,10 @@ describe('order creation under concurrency', () => {
       OrderService.cancel(order.id, f.user.id, 'changed my mind'),
       OrderService.cancel(order.id, f.user.id, 'changed my mind'),
     ]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    // Exactly one of the two cancellations did the work (the loser skips the already-cancelled sub-order).
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    const cancelledNow = results.flatMap((r) => (r.status === 'fulfilled' ? r.value.cancelled : []));
+    expect(cancelledNow).toHaveLength(1);
     expect((await variantNow(catalog.variant.id)).stockQuantity).toBe(10);
     expect(
       (await prisma.khataAccount.findUniqueOrThrow({ where: { id: account.id } })).outstandingAmount.toString(),
