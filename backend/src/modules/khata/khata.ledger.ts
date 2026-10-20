@@ -121,7 +121,8 @@ export async function postKhataEntry(
     where: { id: input.accountId },
     data: {
       outstandingAmount: newOutstanding,
-      lastTransactionAt: now,
+      // Interest accrual is not account activity: it must not restart the interest grace period.
+      ...(input.type === 'INTEREST_LAGA' ? {} : { lastTransactionAt: now }),
       status: nextStatus(account.status, newOutstanding),
       ...(DUE_DATE_RESETTING_TYPES.has(input.type)
         ? { dueDateNextPayment: new Date(now.getTime() + account.creditPeriodDays * 24 * 60 * 60 * 1000) }

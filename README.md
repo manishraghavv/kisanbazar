@@ -526,3 +526,19 @@ This project is licensed under the ISC License — see the [LICENSE](LICENSE) fi
 <p align="center">
   Made with ❤️ for Indian Farmers and Agri-Vendors
 </p>
+
+## Khata interest (how it is charged)
+
+- **Rate:** each khata account has an annual `interestRatePct`. Interest is charged **daily**:
+  `outstanding × rate ÷ 365 ÷ 100`, rounded to 2 decimal places. It **compounds** (the base is the full outstanding
+  balance, including interest posted earlier).
+- **Cadence:** the cron (`CRON_INTEREST_SCHEDULE`, default `0 0 * * *`) posts at most **one** entry per account per
+  UTC day. Each posting has the idempotency key `interest:<accountId>:<yyyy-mm-dd>`, so re-running the job (or two
+  instances running it) cannot double-charge. Days the job did not run are not back-filled.
+- **Grace:** `INTEREST_GRACE_PERIOD_DAYS` full days must pass since the last real transaction (a debit or a
+  repayment) before interest starts. Interest postings do not count as transactions and never restart the grace
+  period.
+- Only `ACTIVE`/`OVERDUE` accounts with a balance and a non-zero rate are charged. Implementation and tests:
+  `backend/src/jobs/cron.ts` (`runInterestCalculation`), `backend/tests/integration/interest.test.ts`.
+- A daily job (`CRON_RECONCILE_SCHEDULE`, default `30 2 * * *`) and the admin endpoint
+  `GET /api/admin/reconciliation/khata` compare every account's `outstandingAmount` with the sum of its ledger entries.

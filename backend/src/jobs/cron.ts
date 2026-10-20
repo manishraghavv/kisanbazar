@@ -48,7 +48,26 @@ export function getCronStatus() {
 //  B.2 — Interest Calculation Cron
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function runInterestCalculation(): Promise<{ processed: number; errors: string[] }> {
+/**
+ * Khata interest.
+ *
+ *   Rate:     the account's annual `interestRatePct`, charged as a DAILY amount = outstanding x rate / 365 / 100,
+ *             rounded to 2 dp. Interest compounds: the base is the whole outstanding balance, including interest
+ *             posted on earlier days.
+ *   Cadence:  once per account per UTC day. The posting carries the idempotency key `interest:<account>:<yyyy-mm-dd>`,
+ *             so re-running the cron (or two instances running it) the same day cannot charge twice. Days on which
+ *             the job did not run are NOT back-filled.
+ *   Grace:    interest starts once `INTEREST_GRACE_PERIOD_DAYS` full days have passed since the last real
+ *             transaction (a debit or a repayment). Interest postings themselves do not count as transactions, so
+ *             they never restart the grace period (they used to, which made interest post only once per grace
+ *             period instead of daily).
+ *   Skipped:  accounts that are not ACTIVE/OVERDUE, owe nothing, or have a 0% rate.
+ */
+export async function runInterestCalculation(
+  opts: { now?: Date; graceDays?: number } = {},
+): Promise<{ processed: number; errors: string[] }> {
+  const now = opts.now ?? new Date();
+  const graceDays = opts.graceDays ?? GRACE_PERIOD_DAYS;
   const errors: string[] = [];
   let processed = 0;
 
@@ -70,11 +89,11 @@ export async function runInterestCalculation(): Promise<{ processed: number; err
     for (const account of accounts) {
       try {
         // Grace period: skip if within N days of last transaction
-        if (GRACE_PERIOD_DAYS > 0 && account.lastTransactionAt) {
+        if (graceDays > 0 && account.lastTransactionAt) {
           const daysSinceLastTx = Math.floor(
-            (Date.now() - account.lastTransactionAt.getTime()) / (1000 * 60 * 60 * 24),
+            (now.getTime() - account.lastTransactionAt.getTime()) / (1000 * 60 * 60 * 24),
           );
-          if (daysSinceLastTx < GRACE_PERIOD_DAYS) continue;
+          if (daysSinceLastTx < graceDays) continue;
         }
 
         // Interest = Outstanding × (InterestRatePct / 365 / 100)
@@ -85,7 +104,7 @@ export async function runInterestCalculation(): Promise<{ processed: number; err
         if (interestAmount.lte(0)) continue;
 
         // One interest posting per account per UTC day: re-running the cron the same day is a no-op.
-        const day = new Date().toISOString().slice(0, 10);
+        const day = now.toISOString().slice(0, 10);
         const { replayed } = await postKhataEntryTx({
           accountId: account.id,
           type: 'INTEREST_LAGA',
