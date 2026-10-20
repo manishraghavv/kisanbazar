@@ -13,7 +13,10 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "test": "vitest run",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "typecheck:tests": "tsc -p tsconfig.test.json"
   },
   "keywords": [],
   "author": "",
@@ -32,9 +35,11 @@
     "@types/node-cron": "^3.0.11",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.2.1",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "prisma": "7.8.0",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

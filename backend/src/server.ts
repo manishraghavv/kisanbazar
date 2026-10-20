@@ -55,7 +55,7 @@ if (process.env.SENTRY_DSN) {
 // ── Global Middleware ───────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: corsOriginCheck() }));
-app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 // Gateway webhook needs the raw bytes for HMAC verification, so it is mounted with
 // express.raw() BEFORE the JSON body parser and before any auth-guarded router.
 app.post('/api/payments/webhook/:gateway', express.raw({ type: '*/*', limit: '1mb' }), asyncHandler(handlePaymentWebhook));
