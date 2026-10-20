@@ -425,6 +425,9 @@ model KhataTransaction {
   proofImageUrl    String? // receipt photo
   upiTransactionId String? // if paid via UPI
 
+  // Makes a ledger write safe to retry: a repeated key never posts twice
+  idempotencyKey String? @unique
+
   khataAccount KhataAccount @relation(fields: [khataAccountId], references: [id])
 
   createdAt DateTime @default(now())
@@ -938,6 +941,8 @@ model WalletTransaction {
   balanceAfter Decimal               @db.Decimal(12, 2)
   remarks      String?
   referenceId  String? // orderId ya khata transaction id
+
+  idempotencyKey String? @unique
 
   wallet Wallet @relation(fields: [walletId], references: [id])
 
