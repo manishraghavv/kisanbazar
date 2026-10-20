@@ -1,191 +1,10 @@
-import { Prisma, OrderStatus, PaymentMethod } from '@prisma/client';
+import { Prisma, OrderStatus } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
 import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '../../common/errors';
-import PDFDocument from 'pdfkit';
-import { LEDGER_TX_OPTIONS, postKhataEntry } from '../khata/khata.ledger';
-import { creditWallet, debitWallet } from '../payments/wallet.ledger';
-import { confirmOrder, orderWalletKey } from '../payments/payment.service';
-import { computeCouponDiscount, computeDeliveryCharge } from './pricing';
-
-export const InvoiceService = {
-  async generateInvoice(orderId: string, userId: string, requesterRole: string): Promise<PDFKit.PDFDocument> {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        user: { select: { fullName: true, phoneNumber: true, email: true } },
-        address: true,
-        items: {
-          include: {
-            variant: {
-              select: {
-                sku: true,
-                variantName: true,
-                mrp: true,
-                sellingPrice: true,
-                product: {
-                  select: {
-                    name: true,
-                    hsnCode: true,
-                    gstRate: true,
-                    vendor: { select: { businessName: true, gstNumber: true, panNumber: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        payments: { where: { status: 'SUCCESS' }, take: 1 },
-      },
-    });
-    if (!order) throw new NotFoundError('Order not found');
-    if (requesterRole !== 'ADMIN' && order.userId !== userId) {
-      const vendor = await prisma.vendor.findUnique({ where: { userId } });
-      if (!vendor) throw new ForbiddenError('Access denied');
-      const hasItem = order.items.some((i) => i.variant.product.vendor.businessName);
-      if (!hasItem) throw new ForbiddenError('Access denied');
-    }
-
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
-    doc.fontSize(18).font('Helvetica-Bold').text('TAX INVOICE', { align: 'center' });
-    doc.moveDown(0.3);
-    doc
-      .fontSize(10)
-      .font('Helvetica')
-      .fillColor('#666')
-      .text(`Invoice #: ${order.orderNumber}`, { align: 'center' })
-      .text(`Date: ${order.createdAt.toLocaleDateString('en-IN')}`, { align: 'center' });
-    doc.moveDown(1);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#ccc').stroke();
-    doc.moveDown(0.5);
-
-    const vendor = order.items[0]?.variant.product.vendor;
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text('Seller:', 50);
-    doc.fontSize(9).font('Helvetica').fillColor('#333');
-    doc.text(`  ${vendor?.businessName || 'Vendor'}`, 50);
-    if (vendor?.gstNumber) doc.text(`  GST: ${vendor.gstNumber}`, 50);
-    if (vendor?.panNumber) doc.text(`  PAN: ${vendor.panNumber}`, 50);
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text('Buyer:', 310);
-    doc.fontSize(9).font('Helvetica').fillColor('#333');
-    doc.text(`  ${order.user.fullName}`, 310);
-    doc.text(`  Phone: ${order.user.phoneNumber}`, 310);
-    doc.text(`  ${order.address.addressLine1}, ${order.address.city}`, 310);
-    doc.text(`  ${order.address.state} - ${order.address.pincode}`, 310);
-    doc.moveDown(1);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#ccc').stroke();
-    doc.moveDown(0.5);
-
-    let rowY = doc.y + 10;
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#fff');
-    doc.rect(50, rowY - 4, 495, 16).fill('#2D6A4F');
-    doc.fillColor('#fff');
-    doc.text('HSN/SAC', 50, rowY, { width: 55 });
-    doc.text('Description', 110, rowY, { width: 165 });
-    doc.text('Qty', 280, rowY, { width: 45, align: 'center' });
-    doc.text('Rate', 330, rowY, { width: 55, align: 'right' });
-    doc.text('Taxable', 390, rowY, { width: 55, align: 'right' });
-    doc.text('GST%', 450, rowY, { width: 50, align: 'center' });
-    doc.text('Amount', 505, rowY, { width: 40, align: 'right' });
-    doc.moveDown(0.5);
-
-    rowY = doc.y;
-    for (const [i, item] of order.items.entries()) {
-      const bgColor = i % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
-      doc.rect(50, rowY - 2, 495, 18).fill(bgColor);
-      const rate = Number(item.unitPrice);
-      const taxable = rate * item.quantity;
-      const gstRate = Number(item.gstRate);
-      const gstAmount = (taxable * gstRate) / 100;
-      const lineTotal = taxable + gstAmount;
-      doc.fontSize(7.5).font('Helvetica').fillColor('#333');
-      doc.text(item.variant.product.hsnCode || '-', 50, rowY, { width: 55 });
-      doc.text(item.variant.product.name.slice(0, 30), 110, rowY, { width: 165 });
-      doc.text(String(item.quantity), 280, rowY, { width: 45, align: 'center' });
-      doc.text(`₹${rate}`, 330, rowY, { width: 55, align: 'right' });
-      doc.text(`₹${taxable}`, 390, rowY, { width: 55, align: 'right' });
-      doc.text(`${gstRate}%`, 450, rowY, { width: 50, align: 'center' });
-      doc.text(`₹${lineTotal}`, 505, rowY, { width: 40, align: 'right' });
-      rowY += 18;
-    }
-
-    doc.moveDown(1);
-    const totalsY = doc.y + 5;
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
-    doc.text('Subtotal:', 380, totalsY, { width: 80, align: 'right' });
-    doc.text(`₹${Number(order.subtotal)}`, 465, totalsY, { width: 80, align: 'right' });
-    doc.fontSize(9).font('Helvetica').fillColor('#333');
-    doc.text('GST:', 380, totalsY + 15, { width: 80, align: 'right' });
-    doc.text(`₹${Number(order.gstAmount)}`, 465, totalsY + 15, { width: 80, align: 'right' });
-    if (Number(order.deliveryCharge) > 0) {
-      doc.text('Delivery:', 380, totalsY + 30, { width: 80, align: 'right' });
-      doc.text(`₹${Number(order.deliveryCharge)}`, 465, totalsY + 30, { width: 80, align: 'right' });
-    }
-    if (Number(order.discountAmount) > 0) {
-      doc.text('Discount:', 380, totalsY + 45, { width: 80, align: 'right' });
-      doc.text(`-₹${Number(order.discountAmount)}`, 465, totalsY + 45, { width: 80, align: 'right' });
-    }
-    doc
-      .moveTo(370, totalsY + 58)
-      .lineTo(545, totalsY + 58)
-      .strokeColor('#ccc')
-      .stroke();
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#000');
-    doc.text('Total:', 380, totalsY + 63, { width: 80, align: 'right' });
-    doc.text(`₹${Number(order.totalAmount)}`, 465, totalsY + 63, { width: 80, align: 'right' });
-    doc.end();
-    return doc;
-  },
-
-  async getInvoiceData(orderId: string, userId: string, requesterRole: string) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        user: { select: { id: true, fullName: true } },
-        items: {
-          include: {
-            variant: {
-              select: {
-                variantName: true,
-                sellingPrice: true,
-                product: {
-                  select: {
-                    name: true,
-                    hsnCode: true,
-                    gstRate: true,
-                    vendor: { select: { businessName: true, gstNumber: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!order) throw new NotFoundError('Order not found');
-    if (requesterRole !== 'ADMIN' && order.user.id !== userId) {
-      const vendor = await prisma.vendor.findUnique({ where: { userId } });
-      if (!vendor) throw new ForbiddenError('Access denied');
-      const hasItem = order.items.some((i) => i.variant.product.vendor.businessName);
-      if (!hasItem) throw new ForbiddenError('Access denied');
-    }
-    const vendor = order.items[0]?.variant.product.vendor;
-    return {
-      orderNumber: order.orderNumber,
-      vendorName: vendor?.businessName || 'Vendor',
-      vendorGst: vendor?.gstNumber || null,
-      buyerName: order.user.fullName,
-      items: order.items.map((i) => ({
-        name: i.variant.product.name,
-        hsn: i.variant.product.hsnCode || '',
-        qty: i.quantity,
-        rate: Number(i.unitPrice),
-        gst: Number(i.gstRate),
-      })),
-      subtotal: Number(order.subtotal),
-      gst: Number(order.gstAmount),
-      total: Number(order.totalAmount),
-    };
-  },
-};
+import { LEDGER_TX_OPTIONS } from '../khata/khata.ledger';
+import { creditWallet } from '../payments/wallet.ledger';
+import { CheckoutInput, createOrder, quoteOrder } from './order.checkout';
+import { Actor, SUB_ORDER_INCLUDE, SubOrderService, loadSubOrderForSeller } from './subOrder.service';
 
 export const CartService = {
   async getCart(userId: string) {
@@ -435,223 +254,12 @@ export const WishlistService = {
 };
 
 export const OrderService = {
-  async create(
-    userId: string,
-    data: {
-      addressId: string;
-      paymentMethod: string;
-      khataAccountId?: string | null;
-      couponCode?: string;
-      channel?: string;
-    },
-  ) {
-    const cart = await prisma.cart.findUnique({
-      where: { userId },
-      include: {
-        items: {
-          include: {
-            variant: {
-              include: {
-                product: {
-                  select: { id: true, vendorId: true, gstRate: true, vendor: { select: { commissionRate: true } } },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!cart || cart.items.length === 0) throw new BadRequestError('Cart is empty');
-    const address = await prisma.address.findUnique({ where: { id: data.addressId } });
-    if (!address || address.userId !== userId) throw new NotFoundError('Address not found');
+  async create(userId: string, data: CheckoutInput) {
+    return createOrder(userId, data);
+  },
 
-    const [{ n: orderSeq }] = await prisma.$queryRaw<Array<{ n: bigint }>>`SELECT nextval('order_number_seq') AS n`;
-    const orderNumber = `KB-${new Date().getFullYear()}-${String(orderSeq).padStart(6, '0')}`;
-
-    // Everything that must hold together happens in ONE interactive transaction: stock, coupon usage,
-    // payment (wallet/khata) and the order itself. Any failure rolls all of it back.
-    // Lock order is always variants (by id) → coupon → khata account / wallet, so concurrent orders cannot deadlock.
-    const order = await prisma.$transaction(async (tx) => {
-      // 0. Claim the cart. Deleting the rows takes their locks, so a double-submit (or two tabs) that raced past
-      // the read above blocks here, finds nothing left to delete, and fails instead of ordering the cart twice.
-      const claimed = await tx.cartItem.deleteMany({ where: { id: { in: cart.items.map((i) => i.id) } } });
-      if (claimed.count !== cart.items.length) throw new ConflictError('Cart was changed or already checked out');
-
-      // 1. Atomically take stock. The WHERE clause is the guard: no row updated means not enough stock.
-      const items = [...cart.items].sort((a, b) => a.variantId.localeCompare(b.variantId));
-      const prices = new Map<string, Prisma.Decimal>();
-      for (const item of items) {
-        const taken = await tx.$queryRaw<Array<{ sellingPrice: Prisma.Decimal }>>`
-          UPDATE "product_variants"
-          SET "stockQuantity" = "stockQuantity" - ${item.quantity}, "updatedAt" = now()
-          WHERE "id" = ${item.variantId} AND "stockQuantity" - "reservedQty" >= ${item.quantity}
-          RETURNING "sellingPrice"`;
-        if (taken.length === 0) throw new BadRequestError(`Insufficient stock for ${item.variant.sku}`);
-        prices.set(item.variantId, new Prisma.Decimal(taken[0].sellingPrice));
-      }
-
-      // 2. Price the order from the locked rows.
-      let subtotal = new Prisma.Decimal(0);
-      let gstAmount = new Prisma.Decimal(0);
-      const orderItemsData: Array<{
-        variantId: string;
-        quantity: number;
-        unitPrice: Prisma.Decimal;
-        gstRate: Prisma.Decimal;
-        commissionAmount: Prisma.Decimal;
-        vendorId: string;
-      }> = [];
-      for (const item of items) {
-        const unitPrice = prices.get(item.variantId)!;
-        const lineTotal = unitPrice.mul(item.quantity);
-        subtotal = subtotal.add(lineTotal);
-        const productGstRate = item.variant.product.gstRate || new Prisma.Decimal(0);
-        gstAmount = gstAmount.add(lineTotal.mul(productGstRate).div(100));
-        orderItemsData.push({
-          variantId: item.variantId,
-          quantity: item.quantity,
-          unitPrice,
-          gstRate: productGstRate,
-          commissionAmount: lineTotal.mul(item.variant.product.vendor.commissionRate).div(100),
-          vendorId: item.variant.product.vendorId,
-        });
-      }
-
-      // 3. Coupon: validity checks, then a conditional increment so the usage limit can never be exceeded.
-      let discountAmount = new Prisma.Decimal(0);
-      let couponType: string | null = null;
-      if (data.couponCode) {
-        const coupon = await tx.coupon.findUnique({ where: { code: data.couponCode } });
-        if (!coupon) throw new NotFoundError('Coupon not found');
-        const now = new Date();
-        if (!coupon.isActive || coupon.expiresAt < now || coupon.startsAt > now)
-          throw new BadRequestError('Coupon is not valid');
-        if (subtotal.lt(coupon.minimumAmount || 0))
-          throw new BadRequestError(`Minimum order amount of ₹${coupon.minimumAmount} not met`);
-        const claimed = await tx.$executeRaw`
-          UPDATE "coupons" SET "usedCount" = "usedCount" + 1, "updatedAt" = now()
-          WHERE "id" = ${coupon.id} AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
-        if (claimed === 0) throw new BadRequestError('Coupon usage limit reached');
-        couponType = coupon.type;
-        discountAmount = computeCouponDiscount(subtotal, coupon);
-      }
-
-      // 4. Server-side delivery charge; the client value (if any) is ignored.
-      const deliveryCharge = computeDeliveryCharge(subtotal, couponType);
-      const grossTotal = subtotal.add(gstAmount).add(deliveryCharge).sub(discountAmount);
-      const totalAmount = grossTotal.lt(0) ? new Prisma.Decimal(0) : grossTotal.toDecimalPlaces(2);
-
-      // 5. Khata credit: the account must be the caller's, active, and tied to the same vendor as every item.
-      let khataAccountId: string | null = null;
-      if (data.paymentMethod === 'KHATA_CREDIT') {
-        if (!data.khataAccountId) throw new BadRequestError('Khata account ID required for credit payment');
-        const khata = await tx.khataAccount.findUnique({
-          where: { id: data.khataAccountId },
-          include: { farmer: { select: { userId: true } } },
-        });
-        if (!khata || khata.farmer.userId !== userId) throw new NotFoundError('Khata account not found');
-        if (khata.status !== 'ACTIVE') throw new BadRequestError('Khata account is not active');
-        if (orderItemsData.some((oi) => oi.vendorId !== khata.vendorId))
-          throw new BadRequestError('Khata credit can only be used for items sold by the khata vendor');
-        khataAccountId = khata.id;
-      }
-
-      const newOrder = await tx.order.create({
-        data: {
-          orderNumber,
-          userId,
-          addressId: data.addressId,
-          subtotal,
-          gstAmount,
-          deliveryCharge,
-          discountAmount,
-          totalAmount,
-          status: 'PENDING',
-          paymentMethod: data.paymentMethod as PaymentMethod,
-          couponCode: data.couponCode,
-          channel: data.channel,
-          khataAccountId,
-          items: {
-            create: orderItemsData.map((oi) => ({
-              variantId: oi.variantId,
-              quantity: oi.quantity,
-              unitPrice: oi.unitPrice,
-              gstRate: oi.gstRate,
-              commissionAmount: oi.commissionAmount,
-            })),
-          },
-        },
-        include: { items: true },
-      });
-      await tx.orderStatusHistory.create({
-        data: { orderId: newOrder.id, newStatus: 'PENDING', changedBy: userId, remarks: 'Order placed' },
-      });
-
-      const vendorGroups = new Map<string, { grossAmount: Prisma.Decimal; commissionAmount: Prisma.Decimal }>();
-      for (const oi of orderItemsData) {
-        const existing = vendorGroups.get(oi.vendorId);
-        const lineTotal = oi.unitPrice.mul(oi.quantity);
-        if (existing) {
-          existing.grossAmount = existing.grossAmount.add(lineTotal);
-          existing.commissionAmount = existing.commissionAmount.add(oi.commissionAmount);
-        } else {
-          vendorGroups.set(oi.vendorId, { grossAmount: lineTotal, commissionAmount: oi.commissionAmount });
-        }
-      }
-      for (const [vendorId, values] of vendorGroups) {
-        const vendor = await tx.vendor.findUnique({ where: { id: vendorId } });
-        await tx.vendorCommission.create({
-          data: {
-            vendorId,
-            orderId: newOrder.id,
-            commissionRate: vendor!.commissionRate,
-            grossAmount: values.grossAmount,
-            commissionAmount: values.commissionAmount,
-            netAmount: values.grossAmount.sub(values.commissionAmount),
-          },
-        });
-      }
-
-      // 6. Payment legs, under row locks. Both throw (and roll everything back) if the money is not there.
-      if (data.paymentMethod === 'WALLET' && totalAmount.gt(0)) {
-        await debitWallet(tx, userId, totalAmount, {
-          remarks: `Order ${orderNumber} — held until delivery`,
-          referenceId: newOrder.id,
-          idempotencyKey: orderWalletKey(orderNumber),
-        });
-        // The wallet leg IS the payment: record it as SUCCESS under the same per-order key that
-        // /payments/initiate and /wallet/pay use, so no later flow can charge the wallet a second time.
-        await tx.payment.create({
-          data: {
-            orderId: newOrder.id,
-            userId,
-            amount: totalAmount,
-            currency: 'INR',
-            paymentMethod: 'WALLET',
-            gateway: 'wallet',
-            status: 'SUCCESS',
-            paidAt: new Date(),
-            idempotencyKey: orderWalletKey(orderNumber),
-          },
-        });
-        await confirmOrder(tx, newOrder.id, userId, 'Paid via wallet');
-      }
-      if (khataAccountId && totalAmount.gt(0)) {
-        await postKhataEntry(tx, {
-          accountId: khataAccountId,
-          type: 'ORDER_LINKED',
-          amount: totalAmount,
-          performedById: userId,
-          linkedOrderId: newOrder.id,
-          remarks: `Auto-created from order ${orderNumber}`,
-          idempotencyKey: `order-khata:${orderNumber}`,
-          allowedStatuses: ['ACTIVE'],
-        });
-      }
-
-      return tx.order.findUniqueOrThrow({ where: { id: newOrder.id }, include: { items: true } });
-    }, LEDGER_TX_OPTIONS);
-    return order;
+  async quote(userId: string, data: { addressId: string; couponCode?: string }) {
+    return quoteOrder(userId, data);
   },
 
   async releaseWalletHold(orderId: string, newStatus: string) {
@@ -682,41 +290,56 @@ export const OrderService = {
     }
   },
 
+  /**
+   * One order with its sub-orders. A customer sees everything of their order; a vendor sees ONLY their own
+   * sub-order(s) (other sellers' lines, shipments and invoices are not exposed); admins see all.
+   */
   async getById(orderId: string, userId: string, requesterRole: string) {
+    let vendorId: string | null = null;
+    if (requesterRole === 'VENDOR') {
+      vendorId = (await prisma.vendor.findUnique({ where: { userId }, select: { id: true } }))?.id ?? null;
+    }
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         user: { select: { id: true, fullName: true, phoneNumber: true } },
         address: true,
-        items: {
-          include: {
-            variant: {
-              select: {
-                id: true,
-                sku: true,
-                variantName: true,
-                product: { select: { id: true, name: true, slug: true } },
-              },
-            },
-          },
+        subOrders: {
+          where: vendorId ? { vendorId } : undefined,
+          orderBy: { subOrderNumber: 'asc' },
+          include: SUB_ORDER_INCLUDE,
         },
         payments: true,
-        shipments: { include: { events: { orderBy: { eventTime: 'desc' } } } },
         statusHistory: { orderBy: { changedAt: 'desc' } },
-        returns: true,
         refunds: true,
       },
     });
     if (!order) throw new NotFoundError('Order not found');
-    if (requesterRole !== 'ADMIN' && order.userId !== userId) {
-      const vendor = await prisma.vendor.findUnique({ where: { userId } });
-      if (!vendor) throw new ForbiddenError('Access denied');
-      const vendorItems = await prisma.orderItem.findFirst({
-        where: { orderId, variant: { product: { vendorId: vendor.id } } },
-      });
-      if (!vendorItems) throw new ForbiddenError('Access denied');
+    if (requesterRole === 'ADMIN' || order.userId === userId) {
+      return OrderService.withFlatItems(order);
     }
-    return order;
+    if (!vendorId || order.subOrders.length === 0) throw new ForbiddenError('Access denied');
+    // Vendors do not see the customer's payments or the other sellers' status history.
+    return OrderService.withFlatItems({
+      ...order,
+      payments: [],
+      refunds: [],
+      statusHistory: order.statusHistory.filter(
+        (h) => h.subOrderId && order.subOrders.some((s) => s.id === h.subOrderId),
+      ),
+    });
+  },
+
+  /** Keeps the legacy flat `items` / `shipments` / `returns` arrays that older clients read, built from the sub-orders. */
+  withFlatItems<T extends { subOrders: Array<{ items: unknown[]; shipments: unknown[]; returns: unknown[] }> }>(
+    order: T,
+  ) {
+    return {
+      ...order,
+      items: order.subOrders.flatMap((s) => s.items),
+      shipments: order.subOrders.flatMap((s) => s.shipments),
+      returns: order.subOrders.flatMap((s) => s.returns),
+    };
   },
 
   async list(
@@ -730,7 +353,7 @@ export const OrderService = {
     if (requesterRole === 'VENDOR') {
       const vendor = await prisma.vendor.findUnique({ where: { userId } });
       if (!vendor) throw new ForbiddenError('Vendor profile not found');
-      where.items = { some: { variant: { product: { vendorId: vendor.id } } } };
+      where.subOrders = { some: { vendorId: vendor.id } };
     } else if (requesterRole !== 'ADMIN') {
       where.userId = userId;
     }
@@ -748,83 +371,38 @@ export const OrderService = {
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { id: true, fullName: true, phoneNumber: true } },
-          items: {
+          subOrders: {
+            where: requesterRole === 'VENDOR' ? { vendor: { userId } } : undefined,
+            orderBy: { subOrderNumber: 'asc' },
             select: {
               id: true,
-              quantity: true,
-              unitPrice: true,
-              variant: { select: { sku: true, variantName: true, product: { select: { name: true } } } },
+              subOrderNumber: true,
+              status: true,
+              totalAmount: true,
+              vendor: { select: { id: true, businessName: true } },
+              items: {
+                select: {
+                  id: true,
+                  quantity: true,
+                  unitPrice: true,
+                  variant: { select: { sku: true, variantName: true, product: { select: { name: true } } } },
+                },
+              },
             },
           },
-          _count: { select: { shipments: true, payments: true } },
+          _count: { select: { payments: true } },
         },
       }),
       prisma.order.count({ where }),
     ]);
-    return { orders, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // `items` stays available as a flat list for older clients.
+    const flat = orders.map((o) => ({ ...o, items: o.subOrders.flatMap((s) => s.items) }));
+    return { orders: flat, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
+  /** Customer cancels the order: every sub-order that is still PENDING/CONFIRMED is cancelled and refunded. */
   async cancel(orderId: string, userId: string, reason: string) {
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
-    if (!order) throw new NotFoundError('Order not found');
-    if (order.userId !== userId) throw new ForbiddenError('Access denied');
-    const cancellableStatuses: OrderStatus[] = ['PENDING', 'CONFIRMED'];
-    if (!cancellableStatuses.includes(order.status as OrderStatus))
-      throw new BadRequestError(`Order cannot be cancelled in ${order.status} status`);
-
-    await prisma.$transaction(async (tx) => {
-      // Conditional transition: of two concurrent cancels exactly one wins, so stock and money are returned once.
-      const moved = await tx.order.updateMany({
-        where: { id: orderId, status: { in: cancellableStatuses } },
-        data: { status: 'CANCELLED', cancellationReason: reason },
-      });
-      if (moved.count === 0) throw new BadRequestError('Order can no longer be cancelled');
-
-      for (const item of [...order.items].sort((a, b) => a.variantId.localeCompare(b.variantId))) {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stockQuantity: { increment: item.quantity } },
-        });
-      }
-      await tx.orderStatusHistory.create({
-        data: { orderId, oldStatus: order.status, newStatus: 'CANCELLED', changedBy: userId, remarks: reason },
-      });
-      if (order.paymentMethod === 'WALLET' && order.totalAmount.gt(0)) {
-        await creditWallet(tx, userId, order.totalAmount, {
-          remarks: `Refund for cancelled order ${order.orderNumber}`,
-          referenceId: order.id,
-          idempotencyKey: `order-refund:${order.orderNumber}`,
-        });
-      }
-      if (order.paymentMethod === 'KHATA_CREDIT' && order.khataAccountId && order.totalAmount.gt(0)) {
-        // Clamped: if the farmer already repaid part of the balance, reverse only what is still owed.
-        await postKhataEntry(tx, {
-          accountId: order.khataAccountId,
-          type: 'WAIVER',
-          amount: order.totalAmount,
-          performedById: userId,
-          linkedOrderId: orderId,
-          remarks: `Order ${order.orderNumber} cancelled — credit reversed`,
-          idempotencyKey: `order-cancel:${order.orderNumber}`,
-          allowedStatuses: ['ACTIVE', 'OVERDUE', 'SETTLED', 'SUSPENDED', 'WRITTEN_OFF'],
-          clampCredit: true,
-        });
-      }
-    }, LEDGER_TX_OPTIONS);
-  },
-
-  async requestReturn(orderId: string, userId: string, data: { reason: string; photoUrls?: string[] }) {
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundError('Order not found');
-    if (order.userId !== userId) throw new ForbiddenError('Access denied');
-    const returnableStatuses: OrderStatus[] = ['DELIVERED', 'SHIPPED'];
-    if (!returnableStatuses.includes(order.status as OrderStatus))
-      throw new BadRequestError(`Return cannot be initiated for order in ${order.status} status`);
-    await prisma.returns.create({ data: { orderId, reason: data.reason, photoUrls: data.photoUrls || [] } });
-    await prisma.order.update({ where: { id: orderId }, data: { status: 'RETURNED' } });
-    await prisma.orderStatusHistory.create({
-      data: { orderId, oldStatus: order.status, newStatus: 'RETURNED', changedBy: userId, remarks: data.reason },
-    });
+    return SubOrderService.cancelOrderAsCustomer(userId, orderId, reason);
   },
 
   async addPayment(
@@ -862,55 +440,39 @@ export const OrderService = {
     return prisma.orderStatusHistory.findMany({ where: { orderId }, orderBy: { changedAt: 'desc' } });
   },
 
+  /**
+   * Legacy route `PUT /orders/:id/status`. It now acts on the CALLER'S OWN sub-order of that order (a vendor can no
+   * longer move another vendor's goods); the parent order status is derived.
+   */
   async updateOrderStatus(orderId: string, vendorUserId: string, data: { status: string; remarks?: string }) {
     const vendor = await prisma.vendor.findUnique({ where: { userId: vendorUserId } });
     if (!vendor) throw new ForbiddenError('Vendor profile not found');
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { items: { include: { variant: { select: { product: { select: { vendorId: true } } } } } } },
-    });
-    if (!order) throw new NotFoundError('Order not found');
-    const hasItem = order.items.some((i) => i.variant.product.vendorId === vendor.id);
-    if (!hasItem) throw new ForbiddenError('No items in this order belong to your shop');
-    const validTransitions: Record<string, string[]> = {
-      PENDING: ['CONFIRMED', 'CANCELLED'],
-      CONFIRMED: ['PROCESSING', 'CANCELLED'],
-      PROCESSING: ['PACKED', 'CANCELLED'],
-      PACKED: ['SHIPPED'],
-      SHIPPED: ['DELIVERED'],
-    };
-    const allowed = validTransitions[order.status] || [];
-    if (!allowed.includes(data.status))
-      throw new BadRequestError(`Cannot transition from ${order.status} to ${data.status}`);
-    if (data.status === 'DELIVERED') {
-      await OrderService.releaseWalletHold(orderId, 'DELIVERED');
-    }
-    const result = await prisma.$transaction([
-      prisma.order.update({ where: { id: orderId }, data: { status: data.status as OrderStatus } }),
-      prisma.orderStatusHistory.create({
-        data: {
-          orderId,
-          oldStatus: order.status,
-          newStatus: data.status as OrderStatus,
-          changedBy: vendorUserId,
-          remarks: data.remarks,
-        },
-      }),
-    ]);
-    return result[0];
+    const own = await prisma.subOrder.findUnique({ where: { orderId_vendorId: { orderId, vendorId: vendor.id } } });
+    if (!own) throw new ForbiddenError('No part of this order belongs to your shop');
+    const result = await SubOrderService.updateStatus({ id: vendorUserId, role: 'VENDOR' }, own.id, data);
+    if (data.status === 'DELIVERED') await OrderService.releaseWalletHold(orderId, 'DELIVERED');
+    return result.subOrder;
   },
 };
 
+/**
+ * Shipments belong to a SUB-ORDER, so they follow the same ownership rule: a seller creates and updates shipments only
+ * for their own sub-orders; the customer can follow every shipment of their order; admins can do both.
+ */
 export const ShipmentService = {
   async create(
-    orderId: string,
+    actor: Actor,
+    subOrderId: string,
     data: { logisticsPartner?: string; awbNumber?: string; pickupEta?: Date; deliveryEta?: Date },
   ) {
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundError('Order not found');
+    const so = await loadSubOrderForSeller(subOrderId, actor);
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED'].includes(so.status)) {
+      throw new BadRequestError(`Cannot create a shipment for a ${so.status} sub-order`);
+    }
     return prisma.shipment.create({
       data: {
-        orderId,
+        orderId: so.orderId,
+        subOrderId,
         logisticsPartner: data.logisticsPartner,
         awbNumber: data.awbNumber,
         pickupEta: data.pickupEta,
@@ -919,12 +481,57 @@ export const ShipmentService = {
     });
   },
 
-  async getByOrder(orderId: string) {
-    return prisma.shipment.findMany({ where: { orderId }, include: { events: { orderBy: { eventTime: 'desc' } } } });
+  /** Legacy `POST /orders/:id/shipments`: a vendor ships their own part; an admin must name the sub-order. */
+  async createForOrder(
+    actor: Actor,
+    orderId: string,
+    data: { subOrderId?: string; logisticsPartner?: string; awbNumber?: string; pickupEta?: Date; deliveryEta?: Date },
+  ) {
+    const { subOrderId: requested, ...rest } = data;
+    let subOrderId = requested;
+    if (actor.role === 'VENDOR') {
+      const vendor = await prisma.vendor.findUnique({ where: { userId: actor.id }, select: { id: true } });
+      const own = vendor
+        ? await prisma.subOrder.findUnique({ where: { orderId_vendorId: { orderId, vendorId: vendor.id } } })
+        : null;
+      if (!own) throw new ForbiddenError('No part of this order belongs to your shop');
+      subOrderId = own.id;
+    } else if (!subOrderId) {
+      const subs = await prisma.subOrder.findMany({ where: { orderId }, select: { id: true } });
+      if (subs.length !== 1) throw new BadRequestError('Say which sub-order to ship (subOrderId)');
+      subOrderId = subs[0].id;
+    }
+    return ShipmentService.create(actor, subOrderId!, rest);
   },
 
-  async update(shipmentId: string, data: any) {
-    const updateData: Prisma.ShipmentUpdateInput = {};
+  async getByOrder(orderId: string, actor: Actor) {
+    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { userId: true } });
+    if (!order) throw new NotFoundError('Order not found');
+    const where: Prisma.ShipmentWhereInput = { orderId };
+    if (actor.role === 'VENDOR') {
+      where.subOrder = { vendor: { userId: actor.id } };
+    } else if (actor.role !== 'ADMIN' && order.userId !== actor.id) {
+      throw new ForbiddenError('Access denied');
+    }
+    return prisma.shipment.findMany({
+      where,
+      include: {
+        events: { orderBy: { eventTime: 'desc' } },
+        subOrder: { select: { id: true, subOrderNumber: true, vendorId: true } },
+      },
+    });
+  },
+
+  async loadForSeller(shipmentId: string, actor: Actor) {
+    const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId }, include: { subOrder: true } });
+    if (!shipment) throw new NotFoundError('Shipment not found');
+    await loadSubOrderForSeller(shipment.subOrderId, actor);
+    return shipment;
+  },
+
+  async update(actor: Actor, shipmentId: string, data: Record<string, unknown>) {
+    await ShipmentService.loadForSeller(shipmentId, actor);
+    const updateData: Record<string, unknown> = {};
     for (const field of [
       'logisticsPartner',
       'awbNumber',
@@ -934,28 +541,41 @@ export const ShipmentService = {
       'currentStatus',
       'deliveryAttempts',
     ]) {
-      if (data[field] !== undefined) (updateData as any)[field] = data[field];
+      if (data[field] !== undefined) updateData[field] = data[field];
     }
-    return prisma.shipment.update({ where: { id: shipmentId }, data: updateData });
+    return prisma.shipment.update({ where: { id: shipmentId }, data: updateData as Prisma.ShipmentUpdateInput });
   },
 
   async addEvent(
+    actor: Actor,
     shipmentId: string,
     data: { eventStatus: string; location?: string; geoLat?: number; geoLng?: number; source?: string },
   ) {
+    await ShipmentService.loadForSeller(shipmentId, actor);
     return prisma.shipmentEvent.create({
       data: {
         shipmentId,
         eventStatus: data.eventStatus,
         location: data.location,
-        geoLat: data.geoLat ? new Prisma.Decimal(data.geoLat) : undefined,
-        geoLng: data.geoLng ? new Prisma.Decimal(data.geoLng) : undefined,
+        geoLat: data.geoLat !== undefined ? new Prisma.Decimal(data.geoLat) : undefined,
+        geoLng: data.geoLng !== undefined ? new Prisma.Decimal(data.geoLng) : undefined,
         source: data.source,
       },
     });
   },
 
-  async getEvents(shipmentId: string) {
+  /** Tracking events: the customer, the owning seller and admins may read them. */
+  async getEvents(actor: Actor, shipmentId: string) {
+    const shipment = await prisma.shipment.findUnique({
+      where: { id: shipmentId },
+      include: { order: { select: { userId: true } }, subOrder: { select: { vendor: { select: { userId: true } } } } },
+    });
+    if (!shipment) throw new NotFoundError('Shipment not found');
+    const allowed =
+      actor.role === 'ADMIN' ||
+      shipment.order.userId === actor.id ||
+      (actor.role === 'VENDOR' && shipment.subOrder.vendor.userId === actor.id);
+    if (!allowed) throw new ForbiddenError('Access denied');
     return prisma.shipmentEvent.findMany({ where: { shipmentId }, orderBy: { eventTime: 'desc' } });
   },
 };

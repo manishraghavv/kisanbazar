@@ -28,13 +28,8 @@ export const addWishlistItemSchema = Joi.object({
 export const createOrderSchema = Joi.object({
   addressId: Joi.string().uuid().required(),
   paymentMethod: Joi.string().valid('UPI', 'CARD', 'NET_BANKING', 'COD', 'WALLET', 'KHATA_CREDIT').required(),
-  khataAccountId: Joi.string()
-    .uuid()
-    .when('paymentMethod', {
-      is: 'KHATA_CREDIT',
-      then: Joi.required(),
-      otherwise: Joi.optional().allow(null),
-    }),
+  // With KHATA_CREDIT each seller's own khata account is found automatically; this may name one of them.
+  khataAccountId: Joi.string().uuid().optional().allow(null),
   couponCode: Joi.string().optional().allow(''),
   channel: Joi.string().valid('web', 'android', 'ios').optional(),
   notes: Joi.string().max(500).optional(),
@@ -44,10 +39,45 @@ export const cancelOrderSchema = Joi.object({
   reason: Joi.string().max(500).required(),
 });
 
-export const returnOrderSchema = Joi.object({
-  reason: Joi.string().max(500).required(),
+export const quoteOrderSchema = Joi.object({
+  addressId: Joi.string().uuid().required(),
+  couponCode: Joi.string().optional().allow(''),
+});
+
+export const cancelSubOrderSchema = Joi.object({
+  reason: Joi.string().min(3).max(500).required(),
+});
+
+export const listSubOrdersQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  status: Joi.string()
+    .valid('PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED', 'REFUNDED')
+    .optional(),
+  vendorId: Joi.string().uuid().optional(),
+});
+
+export const createReturnSchema = Joi.object({
+  items: Joi.array()
+    .items(
+      Joi.object({ orderItemId: Joi.string().uuid().required(), quantity: Joi.number().integer().min(1).required() }),
+    )
+    .min(1)
+    .required(),
+  reason: Joi.string().min(3).max(500).required(),
   photoUrls: Joi.array().items(Joi.string().uri()).max(5).optional(),
 });
+
+export const listReturnsQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  status: Joi.string().valid('REQUESTED', 'APPROVED', 'RECEIVED', 'REFUNDED', 'CREDITED', 'REJECTED').optional(),
+  subOrderId: Joi.string().uuid().optional(),
+});
+
+export const approveReturnSchema = Joi.object({ note: Joi.string().max(500).optional() });
+export const rejectReturnSchema = Joi.object({ note: Joi.string().min(3).max(500).required() });
+export const receiveReturnSchema = Joi.object({ restock: Joi.boolean().default(true) });
 
 export const getOrdersQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
@@ -60,6 +90,7 @@ export const getOrdersQuerySchema = Joi.object({
 });
 
 export const createShipmentSchema = Joi.object({
+  subOrderId: Joi.string().uuid().optional(), // admins shipping on a seller's behalf in a multi-seller order
   logisticsPartner: Joi.string().max(100).optional(),
   awbNumber: Joi.string().max(100).optional(),
   pickupEta: Joi.date().iso().optional(),

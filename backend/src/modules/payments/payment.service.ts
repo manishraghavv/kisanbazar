@@ -4,6 +4,7 @@ import { Prisma, PaymentMethod, PaymentStatus, SettlementStatus, WalletTransacti
 import { prisma } from '../../common/lib/prisma';
 import { ForbiddenError, NotFoundError, ConflictError, BadRequestError, BadGatewayError } from '../../common/errors';
 import { fromPaise, getGateway } from './gateway';
+import { syncOrderStatus } from '../orders/orderStatus';
 
 /** One wallet debit per order, no matter which flow (checkout, /payments/initiate, /wallet/pay) gets there first. */
 export const orderWalletKey = (orderNumber: string) => `order-wallet:${orderNumber}`;
@@ -27,17 +28,26 @@ export interface CaptureInput {
   source: 'verify' | 'webhook';
 }
 
-/** Marks an order's payment as received: PENDING -> CONFIRMED (sub-orders follow the parent). */
+/**
+ * Marks an order's payment as received: every PENDING sub-order becomes CONFIRMED and the parent order status is
+ * re-derived from them. (A cancelled sub-order stays cancelled.)
+ */
 async function confirmOrder(tx: Tx, orderId: string, changedBy: string, remarks: string): Promise<void> {
-  const confirmed = await tx.order.updateMany({
-    where: { id: orderId, status: 'PENDING' },
-    data: { status: 'CONFIRMED' },
-  });
-  if (confirmed.count > 0) {
-    await tx.orderStatusHistory.create({
-      data: { orderId, oldStatus: 'PENDING', newStatus: 'CONFIRMED', changedBy, remarks },
+  const pending = await tx.subOrder.findMany({ where: { orderId, status: 'PENDING' }, select: { id: true } });
+  if (pending.length > 0) {
+    await tx.subOrder.updateMany({ where: { orderId, status: 'PENDING' }, data: { status: 'CONFIRMED' } });
+    await tx.orderStatusHistory.createMany({
+      data: pending.map((s) => ({
+        orderId,
+        subOrderId: s.id,
+        oldStatus: 'PENDING' as const,
+        newStatus: 'CONFIRMED' as const,
+        changedBy,
+        remarks,
+      })),
     });
   }
+  await syncOrderStatus(tx, orderId, changedBy, remarks);
 }
 export { confirmOrder };
 
@@ -51,7 +61,11 @@ async function lockPayment(tx: Tx, paymentId: string) {
  * The single place a gateway payment becomes SUCCESS. Called by both the browser verify call and the webhook;
  * the payment row lock plus the status check make the second caller a no-op, so money is applied exactly once.
  */
-export async function applyCapture(tx: Tx, paymentId: string, input: CaptureInput): Promise<{ applied: boolean }> {
+export async function applyCapture(
+  tx: Tx,
+  paymentId: string,
+  input: CaptureInput,
+): Promise<{ applied: boolean; refundNeeded?: boolean }> {
   const payment = await lockPayment(tx, paymentId);
   if (!payment) throw new NotFoundError('Payment not found');
   if (payment.status === 'SUCCESS' || payment.status === 'REFUNDED' || payment.status === 'PARTIALLY_REFUNDED') {
@@ -86,6 +100,9 @@ export async function applyCapture(tx: Tx, paymentId: string, input: CaptureInpu
       input.source === 'webhook' ? 'system:webhook' : (payment.userId ?? 'system'),
       input.source === 'webhook' ? 'Payment captured (verified webhook)' : 'Payment verified',
     );
+    // Money arrived for an order that was cancelled meanwhile: the caller must refund it after this commits.
+    const order = await tx.order.findUnique({ where: { id: payment.orderId }, select: { status: true } });
+    if (order?.status === 'CANCELLED') return { applied: true, refundNeeded: true };
   }
   return { applied: true };
 }
@@ -213,8 +230,9 @@ export const PaymentService = {
     });
     if (!ok) throw new BadRequestError('Payment verification failed');
 
+    let outcome: { applied: boolean; refundNeeded?: boolean };
     try {
-      await prisma.$transaction(
+      outcome = await prisma.$transaction(
         (tx) => applyCapture(tx, payment.id, { gatewayPaymentId: data.razorpay_payment_id, source: 'verify' }),
         LEDGER_TX_OPTIONS,
       );
@@ -222,6 +240,13 @@ export const PaymentService = {
       // unique(gatewayPaymentId): that gateway payment already confirmed a different payment row.
       if ((err as { code?: string }).code === 'P2002') throw new ConflictError('This gateway payment was already used');
       throw err;
+    }
+    if (outcome.refundNeeded) {
+      await RefundService.refundPayment({
+        paymentId: payment.id,
+        reason: 'Order was cancelled before the payment arrived',
+        idempotencyKey: `late-capture:${payment.id}`,
+      }).catch((err) => console.error('[PAYMENTS] auto-refund of a late capture failed:', (err as Error).message));
     }
     const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     return { payment: fresh, message: 'Payment verified successfully' };
@@ -287,7 +312,7 @@ export const PaymentService = {
       method?: string;
       rawPayload: unknown;
     },
-  ): Promise<{ ignored?: string }> {
+  ): Promise<{ ignored?: string; refundPaymentId?: string }> {
     const lookup: Prisma.PaymentWhereInput[] = [];
     if (input.paymentId) lookup.push({ id: input.paymentId });
     if (input.gatewayOrderId) lookup.push({ gatewayOrderId: input.gatewayOrderId });
@@ -310,13 +335,14 @@ export const PaymentService = {
       );
       return { ignored: 'amount_mismatch' };
     }
-    const { applied } = await applyCapture(tx, payment.id, {
+    const { applied, refundNeeded } = await applyCapture(tx, payment.id, {
       gatewayPaymentId: input.gatewayPaymentId,
       method: input.method,
       rawPayload: input.rawPayload,
       source: 'webhook',
     });
-    return applied ? {} : { ignored: 'already_processed' };
+    if (!applied) return { ignored: 'already_processed' };
+    return refundNeeded ? { refundPaymentId: payment.id } : {};
   },
 
   /** Webhook `payment.failed`: only an unpaid payment can fail; the order stays PENDING so the customer can retry. */
@@ -435,13 +461,20 @@ export const RefundService = {
       const payment = await lockPayment(tx, input.paymentId);
       if (!payment) throw new NotFoundError('Payment not found');
 
+      // A repeated key replays the earlier refund. A refund that FAILED at the gateway is retried on the same row
+      // (the key is unique), after re-checking that the amount is still refundable.
+      let retryOf: { id: string; amount: Prisma.Decimal } | null = null;
       if (input.idempotencyKey) {
         const prior = await tx.refunds.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-        if (prior) return { payment, refund: prior, replay: true };
+        if (prior && prior.status !== 'FAILED') return { payment, refund: prior, replay: true };
+        if (prior) retryOf = prior;
       }
-      if (payment.status !== 'SUCCESS' && payment.status !== 'PARTIALLY_REFUNDED') {
-        throw new BadRequestError('Can only refund successful payments');
-      }
+      // COD cash is collected at the door, so a COD payment is refundable while still recorded as PENDING.
+      const refundable =
+        payment.status === 'SUCCESS' ||
+        payment.status === 'PARTIALLY_REFUNDED' ||
+        (payment.paymentMethod === 'COD' && payment.status === 'PENDING');
+      if (!refundable) throw new BadRequestError('Can only refund successful payments');
       const agg = await tx.refunds.aggregate({
         where: { paymentId: payment.id, status: { in: ['PROCESSED', 'PENDING'] } },
         _sum: { amount: true },
@@ -451,17 +484,22 @@ export const RefundService = {
       if (!amount.gt(0)) throw new BadRequestError('Nothing left to refund');
       if (amount.gt(remaining)) throw new BadRequestError(`Refund exceeds the refundable amount of ₹${remaining}`);
 
-      const refund = await tx.refunds.create({
-        data: {
-          orderId: payment.orderId!,
-          paymentId: payment.id,
-          orderItemId: input.orderItemId,
-          amount,
-          reason: input.reason,
-          status: 'PENDING',
-          idempotencyKey: input.idempotencyKey,
-        },
-      });
+      const refund = retryOf
+        ? await tx.refunds.update({
+            where: { id: retryOf.id },
+            data: { amount, status: 'PENDING', reason: input.reason },
+          })
+        : await tx.refunds.create({
+            data: {
+              orderId: payment.orderId!,
+              paymentId: payment.id,
+              orderItemId: input.orderItemId,
+              amount,
+              reason: input.reason,
+              status: 'PENDING',
+              idempotencyKey: input.idempotencyKey,
+            },
+          });
       return { payment, refund, replay: false };
     }, LEDGER_TX_OPTIONS);
 
@@ -472,7 +510,8 @@ export const RefundService = {
     let gatewayRefundId: string | null = null;
     let finalStatus: 'PROCESSED' | 'PENDING' = 'PROCESSED';
     try {
-      if (payment.paymentMethod === 'WALLET') {
+      if (payment.paymentMethod === 'WALLET' || payment.paymentMethod === 'COD') {
+        // Wallet payments go back to the wallet; so do COD refunds (cash cannot be sent back electronically).
         await prisma.$transaction(async (tx) => {
           await creditWallet(tx, payment.userId!, refund.amount, {
             remarks: `Refund for order payment ${payment.id}`,
@@ -725,22 +764,24 @@ export const SettlementService = {
     });
     if (commissions.length === 0) throw new BadRequestError('No commissions found in this period');
 
-    const orderIds = commissions.map((c) => c.orderId);
+    // Settlement works per SUB-ORDER: only this vendor's delivered sub-orders earn money, and another vendor's
+    // cancellation or return never blocks it. (A cancelled sub-order's commission row is deleted at cancellation.)
+    const subOrderIds = commissions.map((c) => c.subOrderId);
     const activeReturns = await prisma.returns.findFirst({
-      where: { orderId: { in: orderIds }, status: { in: ['REQUESTED', 'APPROVED', 'PICKED'] } },
+      where: { subOrderId: { in: subOrderIds }, status: { in: ['REQUESTED', 'APPROVED', 'RECEIVED'] } },
     });
     if (activeReturns)
       throw new BadRequestError('Cannot generate settlement: some orders have active return requests.');
-    const cancelledOrders = await prisma.order.findFirst({
-      where: { id: { in: orderIds }, status: { in: ['CANCELLED', 'RETURNED', 'REFUNDED'] } },
-    });
-    if (cancelledOrders)
-      throw new BadRequestError('Cannot generate settlement: some orders have been cancelled/refunded.');
 
-    const deliveredOrderIds = (
-      await prisma.order.findMany({ where: { id: { in: orderIds }, status: 'DELIVERED' }, select: { id: true } })
-    ).map((o) => o.id);
-    const deliverableCommissions = commissions.filter((c) => deliveredOrderIds.includes(c.orderId));
+    const deliveredSubOrderIds = new Set(
+      (
+        await prisma.subOrder.findMany({
+          where: { id: { in: subOrderIds }, status: 'DELIVERED' },
+          select: { id: true },
+        })
+      ).map((o) => o.id),
+    );
+    const deliverableCommissions = commissions.filter((c) => deliveredSubOrderIds.has(c.subOrderId));
     if (deliverableCommissions.length === 0) throw new BadRequestError('No delivered orders found in this period.');
 
     const totalSales = deliverableCommissions.reduce((sum, c) => sum.add(c.grossAmount), new Prisma.Decimal(0));

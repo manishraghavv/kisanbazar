@@ -3,6 +3,24 @@ import { authenticate, authorize } from '../../common/middleware/authMiddleware'
 import { asyncHandler } from '../../common/middleware/asyncHandler';
 import { AuthRequest } from '../../common/types/express.d';
 import {
+  listSubOrders,
+  getSubOrder,
+  updateSubOrderStatus,
+  cancelSubOrder,
+  createSubOrderShipment,
+  requestReturn,
+  listReturns,
+  getReturn,
+  approveReturn,
+  rejectReturn,
+  receiveReturn,
+  resolveReturn,
+  listSubOrderInvoices,
+  downloadSubOrderInvoice,
+  getInvoice,
+  downloadInvoicePdf,
+} from './subOrder.controller';
+import {
   getCart,
   addCartItem,
   updateCartItem,
@@ -17,7 +35,7 @@ import {
   getOrders,
   getOrderById,
   cancelOrder,
-  returnOrder,
+  quoteOrder,
   getOrderStatusHistory,
   updateOrderStatus,
   createPayment,
@@ -35,7 +53,14 @@ import {
   addWishlistItemSchema,
   createOrderSchema,
   cancelOrderSchema,
-  returnOrderSchema,
+  quoteOrderSchema,
+  cancelSubOrderSchema,
+  listSubOrdersQuerySchema,
+  createReturnSchema,
+  listReturnsQuerySchema,
+  approveReturnSchema,
+  rejectReturnSchema,
+  receiveReturnSchema,
   getOrdersQuerySchema,
   createPaymentSchema,
   createShipmentSchema,
@@ -151,6 +176,13 @@ wishlistRouter.post(
 //  ORDERS  (Authenticated users, Vendors, Admin)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Read-only price breakdown for the cart (per-vendor split, GST, delivery) - declared before the /:id routes.
+orderRouter.post(
+  '/quote',
+  authenticate,
+  validateBody(quoteOrderSchema),
+  asyncHandler((req, res) => quoteOrder(req as AuthRequest, res)),
+);
 orderRouter.post(
   '/',
   authenticate,
@@ -173,12 +205,6 @@ orderRouter.post(
   authenticate,
   validateBody(cancelOrderSchema),
   asyncHandler((req, res) => cancelOrder(req as AuthRequest, res)),
-);
-orderRouter.post(
-  '/:id/return',
-  authenticate,
-  validateBody(returnOrderSchema),
-  asyncHandler((req, res) => returnOrder(req as AuthRequest, res)),
 );
 orderRouter.get(
   '/:id/status-history',
@@ -244,4 +270,117 @@ shipmentRouter.get(
   asyncHandler((req, res) => getShipmentEvents(req as AuthRequest, res)),
 );
 
-export { cartRouter, wishlistRouter, orderRouter, shipmentRouter };
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SUB-ORDERS (one per vendor)  -  mounted at /api/sub-orders
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const subOrderRouter = Router();
+subOrderRouter.get(
+  '/',
+  authenticate,
+  validateQuery(listSubOrdersQuerySchema),
+  asyncHandler((req, res) => listSubOrders(req as AuthRequest, res)),
+);
+subOrderRouter.get(
+  '/:id',
+  authenticate,
+  asyncHandler((req, res) => getSubOrder(req as AuthRequest, res)),
+);
+subOrderRouter.put(
+  '/:id/status',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateBody(updateOrderStatusSchema),
+  asyncHandler((req, res) => updateSubOrderStatus(req as AuthRequest, res)),
+);
+subOrderRouter.post(
+  '/:id/cancel',
+  authenticate,
+  validateBody(cancelSubOrderSchema),
+  asyncHandler((req, res) => cancelSubOrder(req as AuthRequest, res)),
+);
+subOrderRouter.post(
+  '/:id/shipments',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateBody(createShipmentSchema),
+  asyncHandler((req, res) => createSubOrderShipment(req as AuthRequest, res)),
+);
+subOrderRouter.post(
+  '/:id/returns',
+  authenticate,
+  validateBody(createReturnSchema),
+  asyncHandler((req, res) => requestReturn(req as AuthRequest, res)),
+);
+subOrderRouter.get(
+  '/:id/invoices',
+  authenticate,
+  asyncHandler((req, res) => listSubOrderInvoices(req as AuthRequest, res)),
+);
+subOrderRouter.get(
+  '/:id/invoice',
+  authenticate,
+  asyncHandler((req, res) => downloadSubOrderInvoice(req as AuthRequest, res)),
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  RETURNS  -  mounted at /api/returns
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const returnRouter = Router();
+returnRouter.get(
+  '/',
+  authenticate,
+  validateQuery(listReturnsQuerySchema),
+  asyncHandler((req, res) => listReturns(req as AuthRequest, res)),
+);
+returnRouter.get(
+  '/:id',
+  authenticate,
+  asyncHandler((req, res) => getReturn(req as AuthRequest, res)),
+);
+returnRouter.put(
+  '/:id/approve',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateBody(approveReturnSchema),
+  asyncHandler((req, res) => approveReturn(req as AuthRequest, res)),
+);
+returnRouter.put(
+  '/:id/reject',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateBody(rejectReturnSchema),
+  asyncHandler((req, res) => rejectReturn(req as AuthRequest, res)),
+);
+returnRouter.put(
+  '/:id/receive',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateBody(receiveReturnSchema),
+  asyncHandler((req, res) => receiveReturn(req as AuthRequest, res)),
+);
+returnRouter.post(
+  '/:id/resolve',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  asyncHandler((req, res) => resolveReturn(req as AuthRequest, res)),
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INVOICES / CREDIT NOTES  -  mounted at /api/invoices
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const invoiceDocsRouter = Router();
+invoiceDocsRouter.get(
+  '/:id',
+  authenticate,
+  asyncHandler((req, res) => getInvoice(req as AuthRequest, res)),
+);
+invoiceDocsRouter.get(
+  '/:id/pdf',
+  authenticate,
+  asyncHandler((req, res) => downloadInvoicePdf(req as AuthRequest, res)),
+);
+
+export { cartRouter, wishlistRouter, orderRouter, shipmentRouter, subOrderRouter, returnRouter, invoiceDocsRouter };

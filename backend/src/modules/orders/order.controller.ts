@@ -118,6 +118,16 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+/** Read-only price breakdown (per-vendor split, GST, delivery) for the current cart. */
+export const quoteOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const quote = await OrderService.quote(req.user.id, req.body);
+    res.json({ success: true, data: quote });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
+};
+
 export const getOrders = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const result = await OrderService.list(req.user.id, req.user.role, {
@@ -153,8 +163,8 @@ export const getOrderById = async (req: AuthRequest, res: Response): Promise<voi
 
 export const cancelOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    await OrderService.cancel(req.params.id as string, req.user.id, req.body.reason);
-    res.json({ success: true, message: 'Order cancelled' });
+    const result = await OrderService.cancel(req.params.id as string, req.user.id, req.body.reason);
+    res.json({ success: true, message: 'Order cancelled', data: result });
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -173,18 +183,6 @@ export const getPayments = async (req: AuthRequest, res: Response): Promise<void
   try {
     const payments = await OrderService.getPayments(req.params.id as string, req.user.id, req.user.role);
     res.json({ success: true, data: payments });
-  } catch (err) {
-    handleServiceError(err, res);
-  }
-};
-
-export const returnOrder = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    await OrderService.requestReturn(req.params.id as string, req.user.id, {
-      reason: req.body.reason,
-      photoUrls: req.body.photoUrls,
-    });
-    res.json({ success: true, message: 'Return request submitted' });
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -214,11 +212,15 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response): Promis
 
 export const createShipment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const shipment = await ShipmentService.create(req.params.id as string, {
-      ...req.body,
-      ...(req.body.pickupEta && { pickupEta: new Date(req.body.pickupEta) }),
-      ...(req.body.deliveryEta && { deliveryEta: new Date(req.body.deliveryEta) }),
-    });
+    const shipment = await ShipmentService.createForOrder(
+      { id: req.user.id, role: req.user.role },
+      req.params.id as string,
+      {
+        ...req.body,
+        ...(req.body.pickupEta && { pickupEta: new Date(req.body.pickupEta) }),
+        ...(req.body.deliveryEta && { deliveryEta: new Date(req.body.deliveryEta) }),
+      },
+    );
     res.status(201).json({ success: true, message: 'Shipment created', data: shipment });
   } catch (err) {
     handleServiceError(err, res);
@@ -227,7 +229,10 @@ export const createShipment = async (req: AuthRequest, res: Response): Promise<v
 
 export const getShipments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const shipments = await ShipmentService.getByOrder(req.params.id as string);
+    const shipments = await ShipmentService.getByOrder(req.params.id as string, {
+      id: req.user.id,
+      role: req.user.role,
+    });
     res.json({ success: true, data: shipments });
   } catch (err) {
     handleServiceError(err, res);
@@ -236,7 +241,11 @@ export const getShipments = async (req: AuthRequest, res: Response): Promise<voi
 
 export const updateShipment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const shipment = await ShipmentService.update(req.params.shipmentId as string, req.body);
+    const shipment = await ShipmentService.update(
+      { id: req.user.id, role: req.user.role },
+      req.params.shipmentId as string,
+      req.body,
+    );
     res.json({ success: true, message: 'Shipment updated', data: shipment });
   } catch (err) {
     handleServiceError(err, res);
@@ -245,7 +254,11 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
 
 export const addShipmentEvent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const event = await ShipmentService.addEvent(req.params.shipmentId as string, req.body);
+    const event = await ShipmentService.addEvent(
+      { id: req.user.id, role: req.user.role },
+      req.params.shipmentId as string,
+      req.body,
+    );
     res.status(201).json({ success: true, message: 'Shipment event added', data: event });
   } catch (err) {
     handleServiceError(err, res);
@@ -254,7 +267,10 @@ export const addShipmentEvent = async (req: AuthRequest, res: Response): Promise
 
 export const getShipmentEvents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const events = await ShipmentService.getEvents(req.params.shipmentId as string);
+    const events = await ShipmentService.getEvents(
+      { id: req.user.id, role: req.user.role },
+      req.params.shipmentId as string,
+    );
     res.json({ success: true, data: events });
   } catch (err) {
     handleServiceError(err, res);

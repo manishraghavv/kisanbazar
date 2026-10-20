@@ -22,7 +22,15 @@ import authRoutes from './modules/auth/auth.routes';
 import userRoutes from './modules/users/user.routes';
 import khataRoutes from './modules/khata/khata.routes';
 import productRoutes from './modules/products/product.routes';
-import { cartRouter, wishlistRouter, orderRouter, shipmentRouter } from './modules/orders/order.routes';
+import {
+  cartRouter,
+  wishlistRouter,
+  orderRouter,
+  shipmentRouter,
+  subOrderRouter,
+  returnRouter,
+  invoiceDocsRouter,
+} from './modules/orders/order.routes';
 import paymentRoutes from './modules/payments/payment.routes';
 import engagementRoutes from './modules/engagement/engagement.routes';
 import enterpriseRoutes from './modules/enterprise/enterprise.routes';
@@ -86,6 +94,9 @@ app.use('/api/cart', cartRouter);
 app.use('/api/wishlist', wishlistRouter);
 app.use('/api/orders', orderRouter);
 app.use('/api/shipments', shipmentRouter);
+app.use('/api/sub-orders', subOrderRouter);
+app.use('/api/returns', returnRouter);
+app.use('/api/invoices', invoiceDocsRouter);
 app.use('/api', paymentRoutes);
 app.use('/api', engagementRoutes);
 app.use('/api', enterpriseRoutes);

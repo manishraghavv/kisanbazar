@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { prisma } from '../../common/lib/prisma';
-import { PaymentService } from './payment.service';
+import { PaymentService, RefundService } from './payment.service';
 
 /**
  * Payment gateway webhooks.
@@ -35,6 +35,12 @@ interface RazorpayRefundEntity {
 interface RazorpayEvent {
   event?: string;
   payload?: { payment?: { entity?: RazorpayPaymentEntity }; refund?: { entity?: RazorpayRefundEntity } };
+}
+
+interface WebhookOutcome {
+  duplicate?: boolean;
+  ignored?: string;
+  refundPaymentId?: string;
 }
 
 const PAID_EVENTS = ['payment.captured', 'order.paid'];
@@ -92,12 +98,12 @@ export const handlePaymentWebhook = async (req: Request, res: Response): Promise
 
   // Everything runs in ONE transaction together with the event-id insert: a redelivered event is a no-op, and a
   // crash half-way rolls the insert back so the gateway's retry is processed normally.
-  const outcome = await prisma.$transaction(async (tx) => {
+  const outcome: WebhookOutcome = await prisma.$transaction(async (tx): Promise<WebhookOutcome> => {
     const inserted = await tx.$executeRaw`
       INSERT INTO "payment_webhook_events" ("id", "eventId", "gateway", "eventType", "payload")
       VALUES (${crypto.randomUUID()}, ${eventId}, 'razorpay', ${eventType}, ${JSON.stringify(event)}::jsonb)
       ON CONFLICT ("eventId") DO NOTHING`;
-    if (inserted === 0) return { duplicate: true as const };
+    if (inserted === 0) return { duplicate: true };
 
     if (PAID_EVENTS.includes(eventType)) {
       if (!payment || typeof payment.amount !== 'number') return { ignored: 'malformed_event' };
@@ -126,9 +132,18 @@ export const handlePaymentWebhook = async (req: Request, res: Response): Promise
     return { ignored: 'event_not_handled' };
   });
 
-  if ('duplicate' in outcome) {
+  // Money for an order that was cancelled in the meantime goes straight back (after the transaction committed).
+  if (outcome.refundPaymentId) {
+    await RefundService.refundPayment({
+      paymentId: outcome.refundPaymentId,
+      reason: 'Order was cancelled before the payment arrived',
+      idempotencyKey: `late-capture:${outcome.refundPaymentId}`,
+    }).catch((err) => console.error('[WEBHOOK] auto-refund of a late capture failed:', (err as Error).message));
+  }
+
+  if (outcome.duplicate) {
     res.json({ received: true, duplicate: true });
     return;
   }
-  res.json({ received: true, ...('ignored' in outcome && outcome.ignored ? { ignored: outcome.ignored } : {}) });
+  res.json({ received: true, ...(outcome.ignored ? { ignored: outcome.ignored } : {}) });
 };

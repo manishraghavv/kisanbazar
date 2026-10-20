@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../common/types/express.d';
-import { InvoiceService } from './order.service';
+import { InvoiceService } from './invoice.service';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const archiver = require('archiver');
 
@@ -9,31 +9,7 @@ function handleServiceError(err: unknown, res: Response): void {
   res.status(e.statusCode ?? e.status ?? 500).json({ success: false, message: e.message ?? 'Internal server error' });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  B.1 — INVOICE GENERATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const downloadInvoice = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const doc = await InvoiceService.generateInvoice(req.params.id as string, req.user.id, req.user.role);
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="invoice-${req.params.id}.pdf"`);
-    doc.pipe(res);
-  } catch (err) {
-    handleServiceError(err, res);
-  }
-};
-
-export const getInvoiceData = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const data = await InvoiceService.getInvoiceData(req.params.id as string, req.user.id, req.user.role);
-    res.json({ success: true, data });
-  } catch (err) {
-    handleServiceError(err, res);
-  }
-};
-
+/** Admin: every invoice and credit note of the given orders, one PDF each, in a ZIP. */
 export const downloadBulkInvoices = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { orderIds } = req.body;
@@ -42,7 +18,7 @@ export const downloadBulkInvoices = async (req: AuthRequest, res: Response): Pro
       return;
     }
     if (orderIds.length > 50) {
-      res.status(400).json({ success: false, message: 'Maximum 50 invoices per bulk download' });
+      res.status(400).json({ success: false, message: 'Maximum 50 orders per bulk download' });
       return;
     }
 
@@ -54,19 +30,24 @@ export const downloadBulkInvoices = async (req: AuthRequest, res: Response): Pro
 
     for (const orderId of orderIds) {
       try {
-        const doc = await InvoiceService.generateInvoice(orderId, req.user.id, req.user.role);
-        const buffers: Buffer[] = [];
-        doc.on('data', (chunk: Buffer) => buffers.push(chunk));
-        await new Promise<void>((resolve, reject) => {
-          doc.on('end', () => {
-            archive.append(Buffer.concat(buffers), { name: `invoice-${orderId}.pdf` });
-            resolve();
+        const invoices = await InvoiceService.listForOrder(orderId, { id: req.user.id, role: req.user.role });
+        for (const invoice of invoices) {
+          const doc = InvoiceService.renderPdf(invoice);
+          const buffers: Buffer[] = [];
+          doc.on('data', (chunk: Buffer) => buffers.push(chunk));
+          await new Promise<void>((resolve, reject) => {
+            doc.on('end', () => {
+              archive.append(Buffer.concat(buffers), {
+                name: `${invoice.invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`,
+              });
+              resolve();
+            });
+            doc.on('error', reject);
           });
-          doc.on('error', reject);
-        });
+        }
       } catch {
-        // Skip failed invoices
-        archive.append(`Failed to generate invoice for order ${orderId}`, { name: `failed-${orderId}.txt` });
+        // Skip failed orders
+        archive.append(`Failed to generate invoices for order ${orderId}`, { name: `failed-${orderId}.txt` });
       }
     }
 

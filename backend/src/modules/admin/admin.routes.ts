@@ -12,7 +12,8 @@ import {
   triggerPriceAlerts,
   getCronStatusController,
 } from './cron.controller';
-import { downloadInvoice, getInvoiceData, downloadBulkInvoices } from '../orders/invoice.controller';
+import { downloadBulkInvoices } from '../orders/invoice.controller';
+import { downloadOrderInvoice, getOrderInvoiceData } from '../orders/subOrder.controller';
 import { CouponService } from '../payments/payment.service';
 import { reconcileKhata } from '../khata/khata.ledger';
 
@@ -135,12 +136,12 @@ export const invoiceRouter = Router();
 invoiceRouter.get(
   '/orders/:id/invoice',
   authenticate,
-  asyncHandler((req, res) => downloadInvoice(req as AuthRequest, res)),
+  asyncHandler((req, res) => downloadOrderInvoice(req as AuthRequest, res)),
 );
 invoiceRouter.get(
   '/orders/:id/invoice-data',
   authenticate,
-  asyncHandler((req, res) => getInvoiceData(req as AuthRequest, res)),
+  asyncHandler((req, res) => getOrderInvoiceData(req as AuthRequest, res)),
 );
 invoiceRouter.post(
   '/orders/bulk-invoices',
