@@ -1,3 +1,5 @@
+import { creditWallet, debitWallet } from './wallet.ledger';
+import { LEDGER_TX_OPTIONS } from '../khata/khata.ledger';
 import { Prisma, PaymentStatus, SettlementStatus, WalletTransactionType } from '@prisma/client';
 import crypto from 'crypto';
 import { prisma } from '../../common/lib/prisma';
@@ -133,20 +135,13 @@ export const PaymentService = {
   async processWalletPayment(userId: string, paymentId: string, orderId: string, amount: Prisma.Decimal) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new NotFoundError('Wallet not found');
-    if (wallet.balance.lt(amount)) throw new BadRequestError('Insufficient wallet balance');
 
     return prisma.$transaction(async (tx) => {
-      const newBalance = wallet.balance.sub(amount);
-      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } });
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: 'DEBIT',
-          amount,
-          balanceAfter: newBalance,
-          remarks: 'Payment for order',
-          referenceId: orderId,
-        },
+      // Atomic conditional debit: fails with "Insufficient wallet balance" instead of going negative.
+      await debitWallet(tx, userId, amount, {
+        remarks: 'Payment for order',
+        referenceId: orderId,
+        idempotencyKey: `wallet-pay:${paymentId}`,
       });
       const p = await tx.payment.update({ where: { id: paymentId }, data: { status: 'SUCCESS', paidAt: new Date() } });
       const currentOrder = await tx.order.findUnique({ where: { id: orderId } });
@@ -306,23 +301,12 @@ export const WalletService = {
     return { balance: wallet.balance, walletId: wallet.id };
   },
 
-  async addMoney(userId: string, amount: number, remarks?: string) {
-    const wallet = await WalletService.getWallet(userId);
+  async addMoney(userId: string, amount: number, remarks?: string, idempotencyKey?: string) {
     const decimalAmount = new Prisma.Decimal(amount);
-    const newBalance = wallet.balance.add(decimalAmount);
-    const [updatedWallet] = await prisma.$transaction([
-      prisma.wallet.update({ where: { id: wallet.id }, data: { balance: newBalance } }),
-      prisma.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: 'CREDIT',
-          amount: decimalAmount,
-          balanceAfter: newBalance,
-          remarks: remarks || 'Money added to wallet',
-        },
-      }),
-    ]);
-    return updatedWallet;
+    return prisma.$transaction(async (tx) => {
+      await creditWallet(tx, userId, decimalAmount, { remarks: remarks || 'Money added to wallet', idempotencyKey });
+      return tx.wallet.findUniqueOrThrow({ where: { userId } });
+    }, LEDGER_TX_OPTIONS);
   },
 
   async getTransactions(userId: string, filters: { page: number; limit: number; type?: string }) {
