@@ -33,7 +33,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 
-RUN mkdir -p uploads && chown -R node:node /app
+# Only uploads/ needs to be writable; dependencies and code stay root-owned (read-only for the app user).
+RUN mkdir -p uploads && chown node:node uploads
 USER node
 
 EXPOSE 3000

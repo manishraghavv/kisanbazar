@@ -1,5 +1,47 @@
 # OVERNIGHT_LOG
 
+## Morning summary
+
+**Branches:** `phase-1-stabilize` (Part A, 12 tasks) → `phase-2-money` (Part B, on top of it). Nothing pushed, no remotes touched, `main` untouched, `backend/.env` untouched.
+
+**Final check results (run on `phase-2-money`, last step of the night):**
+
+| Check | Result |
+|---|---|
+| Backend eslint | 0 errors, 9 warnings (unused params in payment stubs) |
+| Backend prettier / tsc / tsc (tests+seed) / build | pass |
+| Backend tests (empty DB → 6 migrations → vitest) | **20 files, 137 tests pass** (unit + integration + concurrency) |
+| Frontend eslint / tsc / vitest / `next build` | 0 errors, 62 warnings / pass / 47 pass / pass |
+| API contract check (`scripts/check-api-contract.mjs`) | OK (167 backend routes, 135 frontend calls) |
+| `docker compose build` + `up` | pass; migrate applied all 6 migrations, api healthy, `/health` shows `database: up, redis: up` |
+| GitHub Actions (`ci.yml`, `deploy.yml`) | YAML parses; **not runnable locally** — first real run happens on your first PR/push |
+
+**What works:** route mounting/auth scoping fixed (cart/wishlist/orders at `/api/cart|wishlist|orders`, admin guard no longer gates other routers), frontend cart/wishlist paths fixed, Docker/compose, seed, test harness, lint/format, root CI, real `/health` + `/ready`, `.env.example` sync + drift test, safe dependency updates (Next 16.4.2), and the Phase 2 money work (row-locked khata ledger, atomic wallet, single-transaction checkout, server-side delivery charge, CHECK constraints, concurrency tests).
+
+**Blocked / not done:** nothing reverted, nothing BLOCKED. Deliberately left: `<img>`→`next/image` (needs your decision on allowed image hosts), `prisma` 7.8→7.10 bump, remaining dev-only audit findings, ~180 backend `any`s (lint rule off), and the open risks listed under "Not done / open risks (Part B)" below.
+
+**Review first:**
+1. **Security found & fixed along the way:** anyone could self-register as ADMIN (`0f3afce`); the admin router's unscoped `router.use(authorize('ADMIN'))` blocked invoice/upload/bulk-import for non-admins; khata checkout let any user charge any khata account.
+2. Migrations `20261020180000_money_integrity` and `20261020181000_order_number_sequence`: on a real/prod DB read the output for `WARNING … left NOT VALID` (dirty negative rows) before relying on the CHECKs.
+3. Behaviour changes: khata can only pay for items of that khata's vendor; interest postings no longer move the due date; debits no longer reset OVERDUE→ACTIVE; double-submitting a cart now returns 409.
+4. `deploy.yml` now runs CI first (`needs: ci`). Check the first PR run; the lockfiles resolve through `registry.npmmirror.com` (pre-existing).
+5. `114c784` is a whole-backend Prettier reformat; use `git diff -w` / skip it when reviewing.
+
+**Run locally** (from `backend/`; compose reads `backend/.env` for interpolation unless you pass `--env-file`):
+```bash
+export JWT_ACCESS_SECRET=$(openssl rand -hex 48) JWT_REFRESH_SECRET=$(openssl rand -hex 48) RAZORPAY_WEBHOOK_SECRET=$(openssl rand -hex 16)
+docker compose up --build -d          # postgres:5433, redis:6380, migrate, api:3000
+DATABASE_URL="postgresql://multivendor:multivendor_dev@localhost:5433/multivendor" npm run db:seed   # dev logins: 9000000001 (admin) / 9000000011 / 9000000021, password Password@123
+curl localhost:3000/health
+cd ../frontend && npm ci && NEXT_PUBLIC_API_URL=http://localhost:3000/api npm run dev
+# tests
+docker compose --profile test up -d --wait postgres-test && npm test
+node ../scripts/check-api-contract.mjs
+```
+(Compose runs the API with `NODE_ENV=production`; set `API_NODE_ENV=development` for dev behaviour.)
+
+---
+
 (Final summary goes at the top when the run finishes. Task log below is updated after every task.)
 
 ## Branch note
