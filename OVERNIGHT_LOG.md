@@ -154,3 +154,34 @@ Part A was fully green before starting (backend lint/tsc/build/tests, frontend l
 - Interest cron semantics unchanged: it skips accounts whose last transaction is within `INTEREST_GRACE_PERIOD_DAYS`, and each posting counts as a transaction, so with the default grace of 7 days interest effectively posts weekly at the *daily* rate. Looks like a pre-existing business-logic bug; I did not change the rate semantics.
 - Vendor-initiated `PUT /orders/:id/status` → CANCELLED/REFUNDED still does not reverse khata/restore stock (only the farmer cancel path does).
 - Lost-update protection for the cart quantity between read and claim is not handled (claim checks row identity, not quantity).
+
+---
+
+# Run 2 — branch `phase-3-orders-gst` (from `phase-2-money`)
+
+**Assumptions:** `ROADMAP.md` does not exist in the repo (read AUDIT.md + this log instead). The checkout was on `main` when run 2 started; nothing was changed there, the new branch was cut from `phase-2-money`.
+
+## Part A — Phase 2.5
+
+### A1–A3. Payments (wallet top-up, wallet idempotency, real Razorpay) — DONE (a986263)
+- `payments/gateway.ts`: `PaymentGateway` interface; `RazorpayGateway` (official `razorpay` SDK, injectable client), `FakeGateway` (no network, records calls), `getGateway()` (keys set → Razorpay; unset outside production → Fake with a warning; unset in production → error, and env validation makes the keys mandatory in production). Decimal → paise only here (`toPaise`/`fromPaise`, half-up, exact; unit-tested on values that break floats).
+- `POST /wallet/add-money` no longer credits. It creates a `Payment(purpose=WALLET_TOPUP)` + gateway order and returns Checkout details. The wallet is credited only inside `applyCapture` (called by `POST /payments/verify` after the HMAC `order_id|payment_id` check, or by the verified `payment.captured` webhook), idempotent on `topup:<paymentId>`. There is no other credit path (`WalletService.addMoney` was removed).
+- `/payments/initiate` creates a gateway order (reuses an open one), `paymentId` in order notes. `/payments/verify` body is now `{paymentId, razorpay_order_id, razorpay_payment_id, razorpay_signature}` (**breaking API change**, frontend updated). Unique `gatewayOrderId`/`gatewayPaymentId` columns stop one gateway payment confirming two rows (409).
+- Webhook: signature (unchanged) + `payment_webhook_events` table (unique `eventId` = `x-razorpay-event-id`, body hash fallback), insert and processing in one transaction ⇒ redelivery is a no-op and a crash rolls the insert back. Handles `payment.captured`/`order.paid`, `payment.failed`, `refund.processed`/`refund.failed`.
+- Refunds: `RefundService.refundPayment` — reserves a `Refunds` row (PENDING) under a payment lock, never beyond the payment amount, moves money OUTSIDE the DB transaction (gateway refund in paise / wallet credit / COD recorded), idempotency key supported, finalised by `refund.processed` if the gateway answers "pending".
+- Wallet double charge: one wallet debit per order via key `order-wallet:<orderNumber>` shared by checkout, `/payments/initiate` and `/wallet/pay` (order row locked; existing SUCCESS payment short-circuits). Checkout with WALLET now also records the SUCCESS payment and confirms the order. `/wallet/pay` requires the amount (if sent) to equal the order total.
+- Migration `20261021090000_payments_gateway` (payments.orderId nullable, userId, purpose, gateway ids, refunds.paymentId/idempotencyKey, webhook event table; backfills userId from orders).
+- Tests: `gateway.test.ts` (HMAC fixtures, paise, SDK payload shape), `tests/integration/payments.test.ts` (16 tests: no credit on add-money, bad/foreign signature, verify+webhook race ⇒ one credit, duplicate event ids, failed→retry, paise in gateway order, partial/full refunds, pending refund webhook, parallel wallet-payment flows).
+- **Needs human review:** the verify path marks a payment SUCCESS on a valid signature without calling Razorpay's `fetch payment` API (standard Checkout flow; the webhook later confirms). Existing `payments.transactionId` values were left as is; the migration copies `pay_…` ids into `gatewayPaymentId` for SUCCESS rows.
+
+### A4. Interest — DONE (3862568)
+- Bug: every interest posting set `lastTransactionAt`, so with a grace period of N days interest posted once per N days at the daily rate. Now interest postings do not touch `lastTransactionAt`; grace is measured from the last real transaction. Daily compounding at `outstanding × rate ÷ 365 ÷ 100`, one posting per account per UTC day (key `interest:<acct>:<date>`). Documented in code and README. `runInterestCalculation({now, graceDays})` is injectable; tests simulate 5 consecutive days, same-day reruns, grace boundary, skipped statuses.
+
+### A5. Reconciliation — DONE (52e9117)
+- `runKhataReconciliation` (cron `CRON_RECONCILE_SCHEDULE`, default `30 2 * * *`): logs `[RECONCILE] DRIFT …` as an error and notifies every admin; `GET /api/admin/reconciliation/khata` (ADMIN only) returns `{ok, driftCount, drift[]}`. Tests cover detection, alerting, authorisation.
+
+### A6. Registry — DONE (8f187a7)
+- Both lockfiles: `registry.npmmirror.com` → `registry.npmjs.org` (host rewrite only; integrity hashes untouched). Verified with a clean `npm ci --ignore-scripts` of each lockfile in a scratch directory (integrity-checked against npmjs). Versions unchanged.
+
+### A7. Frontend Razorpay — DONE (f0ef091)
+- `lib/razorpay.ts` (Checkout.js loader, `runCheckout`, `verifyPayment`; auto-completes against the fake backend gateway in dev). Checkout page: online methods (UPI/card/net-banking) create the order then pay via Checkout, with a "Payment not completed" screen (retry / view order) for cancel and failure; COD records the payment; wallet and khata are settled server-side at checkout. Wallet top-up page uses the real flow (no direct credit). Unit tests for the helpers.
