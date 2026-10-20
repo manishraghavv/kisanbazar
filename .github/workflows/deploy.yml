@@ -17,8 +17,13 @@ permissions:
   id-token: write
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
   lint-and-build:
     name: Lint, TypeCheck & Build
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
