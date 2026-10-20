@@ -1,66 +1,100 @@
 # ─────────────────────────────────────────────────────────────
 #  Multi-Vendor E-commerce Backend — Docker Compose
+#
+#    docker compose up --build          # api + postgres + redis (migrations run first)
+#    docker compose --profile test up -d postgres-test   # throwaway DB for `npm test`
+#
+#  Required: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET (>=32 chars, different; `openssl rand -hex 48`) and
+#  RAZORPAY_WEBHOOK_SECRET (>=16 chars). For local dev set API_NODE_ENV=development.
+#  NOTE: compose also reads backend/.env for ${VAR} interpolation; pass --env-file <file> to override.
+#  Host ports are offset from the defaults so the stack does not clash with a local Postgres/Redis.
 # ─────────────────────────────────────────────────────────────
 
-version: '3.8'
+x-db-url: &db-url postgresql://${DB_USER:-multivendor}:${DB_PASSWORD:-multivendor_dev}@postgres:5432/${DB_NAME:-multivendor}?schema=public
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: multivenor-postgres
     restart: unless-stopped
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5433}:5432'
     environment:
-      POSTGRES_USER: ${DB_USER:-multivenor}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-multivenor_secret}
-      POSTGRES_DB: ${DB_NAME:-multivenor_db}
+      POSTGRES_USER: ${DB_USER:-multivendor}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-multivendor_dev}
+      POSTGRES_DB: ${DB_NAME:-multivendor}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-multivenor} -d ${DB_NAME:-multivenor_db}']
-      interval: 10s
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: multivenor-redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6380}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
-  backend:
+  # One-shot: applies migrations with the Prisma CLI (dev dependency, so it uses the builder stage).
+  migrate:
     build:
       context: .
-      dockerfile: Dockerfile
+      target: builder
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: *db-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
       target: production
-    container_name: multivenor-backend
     restart: unless-stopped
     ports:
       - '${PORT:-3000}:3000'
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${API_NODE_ENV:-production}
       PORT: 3000
-      DATABASE_URL: postgresql://${DB_USER:-multivenor}:${DB_PASSWORD:-multivenor_secret}@postgres:5432/${DB_NAME:-multivenor_db}?schema=public
+      DATABASE_URL: *db-url
       REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET (>=32 chars)}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET (>=32 chars)}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:?set RAZORPAY_WEBHOOK_SECRET (>=16 chars, required when NODE_ENV=production)}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-    command: >
-      sh -c "npx prisma migrate deploy && node dist/server.js"
+
+  # Disposable database for the integration test suite (tmpfs: data is lost on stop).
+  postgres-test:
+    image: postgres:16-alpine
+    profiles: ['test']
+    ports:
+      - '${POSTGRES_TEST_PORT:-5434}:5432'
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: multivendor_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U test -d multivendor_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
 
 volumes:
   postgres-data:
