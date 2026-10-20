@@ -648,6 +648,9 @@ model Address {
   user   User    @relation(fields: [userId], references: [id])
   orders Order[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@map("addresses")
 }
