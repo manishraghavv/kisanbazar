@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:seed": "prisma db seed"
   },
   "keywords": [],
   "author": "",
