@@ -81,3 +81,32 @@ export async function createCatalogItem(opts: { stock?: number; price?: number }
   });
   return { vendorUser, vendor, category, product, variant };
 }
+
+// ── Direct-to-DB fixtures (fast: no HTTP, no bcrypt) for concurrency tests ───────────────────────────
+
+/** A farmer with a farmer profile, an address and a wallet. */
+export async function createFarmerDirect(opts: { walletBalance?: number } = {}) {
+  const user = await prisma.user.create({
+    data: { fullName: 'Direct Farmer', phoneNumber: uniquePhone(), role: 'FARMER', isPhoneVerified: true },
+  });
+  const farmer = await prisma.farmer.create({ data: { userId: user.id } });
+  const address = await prisma.address.create({
+    data: { userId: user.id, addressLine1: '1 Test Road', city: 'Meerut', state: 'Uttar Pradesh', pincode: '250001' },
+  });
+  await prisma.wallet.create({ data: { userId: user.id, balance: opts.walletBalance ?? 0 } });
+  return { user, farmer, address };
+}
+
+/** Replaces the user's cart with the given lines. */
+export async function fillCart(userId: string, lines: Array<{ variantId: string; quantity: number }>) {
+  const cart = await prisma.cart.upsert({ where: { userId }, update: {}, create: { userId } });
+  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+  await prisma.cartItem.createMany({ data: lines.map((l) => ({ cartId: cart.id, ...l })) });
+  return cart;
+}
+
+export async function createKhataAccount(vendorId: string, farmerId: string, creditLimit: number) {
+  return prisma.khataAccount.create({
+    data: { vendorId, farmerId, creditLimitAmount: creditLimit, interestRatePct: 12, creditPeriodDays: 30 },
+  });
+}
