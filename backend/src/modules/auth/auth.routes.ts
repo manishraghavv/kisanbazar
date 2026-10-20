@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { strictLimiter, authLimiter } from '../../common/middleware/rateLimiter';
 import {
   register,
   login,
@@ -38,13 +39,13 @@ function validate(schema: Joi.ObjectSchema) {
   };
 }
 
-router.post('/register', validate(registerSchema), asyncHandler(register));
-router.post('/login', validate(loginSchema), asyncHandler(login));
+router.post('/register', strictLimiter, validate(registerSchema), asyncHandler(register));
+router.post('/login', strictLimiter, validate(loginSchema), asyncHandler(login));
 router.post('/logout', asyncHandler(logout));
-router.post('/refresh-token', validate(refreshTokenSchema), asyncHandler(refreshAccessToken));
-router.post('/verify-otp', validate(verifyOtpSchema), asyncHandler(verifyOtp));
-router.post('/resend-otp', validate(resendOtpSchema), asyncHandler(resendOtp));
-router.post('/forgot-password', validate(forgotPasswordSchema), asyncHandler(forgotPassword));
-router.post('/reset-password', validate(resetPasswordSchema), asyncHandler(resetPassword));
+router.post('/refresh-token', authLimiter, validate(refreshTokenSchema), asyncHandler(refreshAccessToken));
+router.post('/verify-otp', strictLimiter, validate(verifyOtpSchema), asyncHandler(verifyOtp));
+router.post('/resend-otp', strictLimiter, validate(resendOtpSchema), asyncHandler(resendOtp));
+router.post('/forgot-password', strictLimiter, validate(forgotPasswordSchema), asyncHandler(forgotPassword));
+router.post('/reset-password', strictLimiter, validate(resetPasswordSchema), asyncHandler(resetPassword));
 
 export default router;

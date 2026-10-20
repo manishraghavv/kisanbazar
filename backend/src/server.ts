@@ -10,6 +10,7 @@ import { swaggerSpec } from './common/config/swagger';
 import { AppError } from './common/errors';
 import { asyncHandler } from './common/middleware/asyncHandler';
 import { metricsMiddleware, metricsHandler } from './common/middleware/metrics';
+import { generalLimiter } from './common/middleware/rateLimiter';
 import { corsOriginCheck } from './common/config/cors';
 import { initSocket } from './common/lib/socket';
 import { AuthRequest } from './common/types/express.d';
@@ -34,6 +35,10 @@ const app: Express = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
+// Number of reverse-proxy hops (nginx) in front of the app, so req.ip is the real
+// client IP and per-IP rate limits work. Production defaults to 1 (see DEPLOYMENT.md nginx config).
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? 1 : 0)));
+
 // ── Socket.io ──────────────────────────────────────────────────────────────
 initSocket(httpServer);
 
@@ -53,6 +58,9 @@ app.use(morgan('dev'));
 // Gateway webhook needs the raw bytes for HMAC verification, so it is mounted with
 // express.raw() BEFORE the JSON body parser and before any auth-guarded router.
 app.post('/api/payments/webhook/:gateway', express.raw({ type: '*/*', limit: '1mb' }), asyncHandler(handlePaymentWebhook));
+
+// Global per-IP ceiling for the API (the webhook above is HMAC-protected and exempt).
+app.use('/api', generalLimiter);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));

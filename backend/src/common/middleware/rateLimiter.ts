@@ -2,9 +2,12 @@
  * Rate Limiting Middleware
  *
  * Three tiers:
- *   - strict:   5 req/min  (OTP, login, password reset)
- *   - auth:    10 req/min  (authenticated API calls)
- *   - general: 100 req/min (public endpoints)
+ *   - strict:   5 req/min per IP+route  (login, register, OTP, password reset)
+ *   - auth:    10 req/min per IP+route  (token refresh and similar)
+ *   - general: 300 req/min per IP       (global ceiling across all /api routes)
+ *
+ * Each limiter keeps its own counters, so stacking several on one route is safe.
+ * Client IPs come from req.ip; set TRUST_PROXY so this is the real client behind nginx.
  *
  * Uses an in-memory store. In production, replace with Redis-based store
  * (e.g., rate-limit-redis) for multi-instance deployments.
@@ -33,13 +36,19 @@ export interface RateLimitConfig {
   windowMs: number;
   max: number;
   message?: string;
+  /** 'ip-route' (default) counts per client+path; 'ip' counts per client across all paths. */
+  keyBy?: 'ip-route' | 'ip';
 }
 
-function createRateLimiter(config: RateLimitConfig) {
-  const { windowMs, max, message } = config;
+let limiterSeq = 0;
+
+export function createRateLimiter(config: RateLimitConfig) {
+  const { windowMs, max, message, keyBy = 'ip-route' } = config;
+  const id = ++limiterSeq;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const key = `${req.ip || req.socket.remoteAddress || 'unknown'}:${req.path}`;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const key = keyBy === 'ip' ? `${id}:${ip}` : `${id}:${ip}:${req.baseUrl}${req.path}`;
     const now = Date.now();
 
     let entry = store.get(key);
@@ -88,7 +97,8 @@ export const authLimiter = createRateLimiter({
 
 export const generalLimiter = createRateLimiter({
   windowMs: defaultWindow,
-  max: Number(process.env.RATE_LIMIT_MAX_GENERAL) || 100,
+  max: Number(process.env.RATE_LIMIT_MAX_GENERAL) || 300,
+  keyBy: 'ip',
   message: 'Too many requests. Please slow down.',
 });
 
