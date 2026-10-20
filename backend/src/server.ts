@@ -26,6 +26,7 @@ import addressRoutes from './modules/addresses/address.routes';
 import { adminRouter, invoiceRouter, autoApplyCouponHandler } from './modules/admin/admin.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import bulkImportRoutes from './modules/products/bulk-import.routes';
+import { handlePaymentWebhook } from './modules/payments/payment.webhook';
 import { autoApplyCouponSchema, validateCouponSchema } from './modules/payments/payment.validator';
 
 const app: Express = express();
@@ -51,6 +52,10 @@ const corsOrigins = process.env.CORS_ORIGIN
   : '*';
 app.use(cors({ origin: corsOrigins }));
 app.use(morgan('dev'));
+// Gateway webhook needs the raw bytes for HMAC verification, so it is mounted with
+// express.raw() BEFORE the JSON body parser and before any auth-guarded router.
+app.post('/api/payments/webhook/:gateway', express.raw({ type: '*/*', limit: '1mb' }), asyncHandler(handlePaymentWebhook));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 

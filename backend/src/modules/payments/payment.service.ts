@@ -113,16 +113,46 @@ export const PaymentService = {
     });
   },
 
-  async handleWebhook(gateway: string, payload: any) {
-    const { paymentId, transactionId, status } = payload;
-    if (status === 'captured' || status === 'paid') {
-      const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
-      if (!payment) throw new NotFoundError('Payment not found');
-      await prisma.payment.update({ where: { id: paymentId }, data: { status: 'SUCCESS', transactionId: transactionId || payment.transactionId, paidAt: new Date(), webhookPayload: payload } });
-      const order = await prisma.order.findUnique({ where: { id: payment.orderId } });
-      if (order && order.status === 'PENDING') { await prisma.order.update({ where: { id: payment.orderId }, data: { status: 'CONFIRMED' } }); }
+  /**
+   * Called only after the webhook signature has been verified.
+   * Unknown payments and amount mismatches are ignored (never confirmed) and the call is idempotent.
+   */
+  async confirmCapturedPayment(input: {
+    paymentId?: string;
+    gatewayOrderId?: string;
+    gatewayPaymentId?: string;
+    amountPaise: number;
+    currency?: string;
+    rawPayload: unknown;
+  }): Promise<{ ignored?: string }> {
+    const lookup: Prisma.PaymentWhereInput[] = [];
+    if (input.paymentId) lookup.push({ id: input.paymentId });
+    if (input.gatewayOrderId) lookup.push({ transactionId: input.gatewayOrderId });
+    if (lookup.length === 0) return { ignored: 'unknown_payment' };
+
+    const payment = await prisma.payment.findFirst({ where: { OR: lookup } });
+    if (!payment) return { ignored: 'unknown_payment' };
+    if (payment.status === 'SUCCESS') return { ignored: 'already_processed' };
+    if (payment.status === 'REFUNDED' || payment.status === 'PARTIALLY_REFUNDED') return { ignored: 'already_processed' };
+
+    const expectedPaise = payment.amount.mul(100);
+    if (!expectedPaise.equals(input.amountPaise) || (input.currency && input.currency !== payment.currency)) {
+      console.error(`[WEBHOOK] Amount/currency mismatch for payment ${payment.id}: expected ${expectedPaise} ${payment.currency}, got ${input.amountPaise} ${input.currency}`);
+      return { ignored: 'amount_mismatch' };
     }
-    return { received: true };
+
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.payment.updateMany({
+        where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] } },
+        data: { status: 'SUCCESS', transactionId: input.gatewayPaymentId ?? payment.transactionId, paidAt: new Date(), webhookPayload: input.rawPayload as Prisma.InputJsonValue },
+      });
+      if (updated.count === 0) return;
+      const confirmed = await tx.order.updateMany({ where: { id: payment.orderId, status: 'PENDING' }, data: { status: 'CONFIRMED' } });
+      if (confirmed.count > 0) {
+        await tx.orderStatusHistory.create({ data: { orderId: payment.orderId, oldStatus: 'PENDING', newStatus: 'CONFIRMED', changedBy: 'system:webhook', remarks: 'Payment captured (verified webhook)' } });
+      }
+    });
+    return {};
   },
 
   async getPayment(paymentId: string) {

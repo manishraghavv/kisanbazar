@@ -5,7 +5,6 @@ import { AuthRequest } from '../../common/types/express.d';
 import {
   initiatePayment,
   verifyPayment,
-  handlePaymentWebhook,
   getPayment,
   processRefund,
   listPayments,
@@ -77,12 +76,6 @@ function validateQuery(schema: ReturnType<typeof import('joi').object>) {
     next();
   };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  WEBHOOKS  (Public — no auth, signature verified in controller)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post('/payments/webhook/:gateway', asyncHandler((req, res) => handlePaymentWebhook(req as AuthRequest, res)));
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PAYMENTS  (Authenticated)

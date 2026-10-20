@@ -33,15 +33,6 @@ export const verifyPayment = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
-export const handlePaymentWebhook = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const result = await paymentService.handleWebhook(req.params.gateway as string, req.body);
-    res.json(result);
-  } catch (err) {
-    handleServiceError(err, res);
-  }
-};
-
 export const getPayment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const payment = await paymentService.getPayment(req.params.id as string);
