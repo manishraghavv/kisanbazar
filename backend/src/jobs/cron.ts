@@ -8,6 +8,7 @@
  */
 
 import { prisma } from '../common/lib/prisma';
+import { postKhataEntryTx } from '../modules/khata/khata.ledger';
 import cron from 'node-cron';
 import { dispatch } from '../common/services/notification-dispatch';
 
@@ -80,30 +81,21 @@ export async function runInterestCalculation(): Promise<{ processed: number; err
         const interestRate = account.interestRatePct;
         if (interestRate.lte(0)) continue; // No interest rate set
 
-        const interestAmount = account.outstandingAmount.mul(interestRate).div(36500); // ÷ 365 ÷ 100
+        const interestAmount = account.outstandingAmount.mul(interestRate).div(36500).toDecimalPlaces(2); // ÷ 365 ÷ 100
         if (interestAmount.lte(0)) continue;
 
-        const newBalance = account.outstandingAmount.add(interestAmount);
-
-        await prisma.$transaction([
-          prisma.khataTransaction.create({
-            data: {
-              khataAccountId: account.id,
-              type: 'INTEREST_LAGA',
-              amount: interestAmount,
-              balanceAfter: newBalance,
-              performedById: 'SYSTEM_CRON',
-              remarks: `Daily interest @ ${interestRate}% p.a.`,
-            },
-          }),
-          prisma.khataAccount.update({
-            where: { id: account.id },
-            data: {
-              outstandingAmount: newBalance,
-              lastTransactionAt: new Date(),
-            },
-          }),
-        ]);
+        // One interest posting per account per UTC day: re-running the cron the same day is a no-op.
+        const day = new Date().toISOString().slice(0, 10);
+        const { replayed } = await postKhataEntryTx({
+          accountId: account.id,
+          type: 'INTEREST_LAGA',
+          amount: interestAmount,
+          performedById: 'SYSTEM_CRON',
+          remarks: `Daily interest @ ${interestRate}% p.a.`,
+          idempotencyKey: `interest:${account.id}:${day}`,
+          allowedStatuses: ['ACTIVE', 'OVERDUE'],
+        });
+        if (replayed) continue;
 
         processed++;
       } catch (err) {

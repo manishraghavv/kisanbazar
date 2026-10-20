@@ -21,6 +21,8 @@ export const addTransactionSchema = Joi.object({
   remarks: Joi.string().max(500).optional(),
   proofImageUrl: Joi.string().uri().optional(),
   upiTransactionId: Joi.string().max(100).optional(),
+  // Optional retry-safety key (the Idempotency-Key header is accepted too)
+  idempotencyKey: Joi.string().max(100).optional(),
 });
 
 export const createKhataRequestSchema = Joi.object({

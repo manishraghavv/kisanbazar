@@ -61,6 +61,7 @@ export const updateAccount = async (req: AuthRequest, res: Response): Promise<vo
 
 export const addTransaction = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const clientKey = (req.header('Idempotency-Key') ?? req.body.idempotencyKey) as string | undefined;
     const transaction = await KhataService.addTransaction(req.params.id as string, req.user.id, req.user.role, {
       type: req.body.type as KhataTransactionType,
       amount: req.body.amount,
@@ -68,6 +69,7 @@ export const addTransaction = async (req: AuthRequest, res: Response): Promise<v
       remarks: req.body.remarks,
       proofImageUrl: req.body.proofImageUrl,
       upiTransactionId: req.body.upiTransactionId,
+      idempotencyKey: clientKey ? `api:${req.params.id}:${clientKey}` : undefined,
     });
     res.status(201).json({ success: true, message: 'Transaction recorded', data: transaction });
   } catch (err) {

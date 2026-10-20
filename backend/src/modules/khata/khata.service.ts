@@ -1,5 +1,6 @@
 import { KhataStatus, KhataTransactionType, KhataRequestStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
+import { postKhataEntryTx } from './khata.ledger';
 import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '../../common/errors';
 
 export const KhataService = {
@@ -146,6 +147,7 @@ export const KhataService = {
       remarks?: string;
       proofImageUrl?: string;
       upiTransactionId?: string;
+      idempotencyKey?: string;
     },
   ) {
     const account = await prisma.khataAccount.findUnique({
@@ -153,51 +155,25 @@ export const KhataService = {
       include: { vendor: { select: { userId: true } } },
     });
     if (!account) throw new NotFoundError('Khata account not found');
-    if (account.status === 'SUSPENDED' || account.status === 'WRITTEN_OFF') {
-      throw new BadRequestError(`Cannot add transaction to a ${account.status.toLowerCase()} account`);
-    }
 
     if (performerRole === 'VENDOR' && account.vendor.userId !== performerId) {
       throw new ForbiddenError('Access denied');
     }
     if (performerRole === 'FARMER') throw new ForbiddenError('Farmers cannot record transactions directly');
 
-    const amount = new Prisma.Decimal(data.amount);
-    const isDebit = ['UDHAR_DIYA', 'INTEREST_LAGA', 'ORDER_LINKED'].includes(data.type);
-    const newOutstanding = isDebit ? account.outstandingAmount.add(amount) : account.outstandingAmount.sub(amount);
-
-    if (isDebit && newOutstanding.gt(account.creditLimitAmount)) {
-      throw new BadRequestError(`Transaction would exceed credit limit of ₹${account.creditLimitAmount}`);
-    }
-
-    const now = new Date();
-    const [transaction] = await prisma.$transaction([
-      prisma.khataTransaction.create({
-        data: {
-          khataAccountId: accountId,
-          type: data.type,
-          amount,
-          balanceAfter: newOutstanding,
-          linkedOrderId: data.linkedOrderId,
-          performedById: performerId,
-          remarks: data.remarks,
-          proofImageUrl: data.proofImageUrl,
-          upiTransactionId: data.upiTransactionId,
-        },
-      }),
-      prisma.khataAccount.update({
-        where: { id: accountId },
-        data: {
-          outstandingAmount: newOutstanding,
-          lastTransactionAt: now,
-          status: newOutstanding.lte(0) ? 'SETTLED' : 'ACTIVE',
-          dueDateNextPayment: isDebit
-            ? new Date(now.getTime() + account.creditPeriodDays * 24 * 60 * 60 * 1000)
-            : undefined,
-        },
-      }),
-    ]);
-
+    // Balance, limit and status checks happen under a row lock inside postKhataEntry.
+    const { transaction } = await postKhataEntryTx({
+      accountId,
+      type: data.type,
+      amount: new Prisma.Decimal(data.amount),
+      performedById: performerId,
+      idempotencyKey: data.idempotencyKey,
+      linkedOrderId: data.linkedOrderId,
+      remarks: data.remarks,
+      proofImageUrl: data.proofImageUrl,
+      upiTransactionId: data.upiTransactionId,
+    });
+    if (!transaction) throw new BadRequestError('Nothing to apply');
     return transaction;
   },
 
