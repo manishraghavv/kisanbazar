@@ -56,7 +56,7 @@ export const useWishlistStore = create<WishlistStore>()((set, get) => ({
             product: ProductListItem;
           }>;
         };
-      }>("/orders/wishlist");
+      }>("/wishlist");
 
       // Map the wishlist response to product list items
       const items: WishlistItem[] = response.data.data.items.map((item) => ({
@@ -74,7 +74,7 @@ export const useWishlistStore = create<WishlistStore>()((set, get) => ({
   addItem: async (productId: string) => {
     set({ isAdding: true });
     try {
-      await apiClient.post("/orders/wishlist/items", { productId });
+      await apiClient.post("/wishlist/items", { productId });
       // Refresh wishlist
       await get().getWishlist();
     } catch (err) {
@@ -91,7 +91,7 @@ export const useWishlistStore = create<WishlistStore>()((set, get) => ({
     }));
 
     try {
-      await apiClient.delete(`/orders/wishlist/items/${itemId}`);
+      await apiClient.delete(`/wishlist/items/${itemId}`);
       await get().getWishlist();
     } catch {
       await get().getWishlist();
@@ -101,7 +101,7 @@ export const useWishlistStore = create<WishlistStore>()((set, get) => ({
 
   moveToCart: async (itemId: string) => {
     try {
-      await apiClient.post(`/orders/wishlist/items/${itemId}/move`);
+      await apiClient.post(`/wishlist/items/${itemId}/move`);
       // Remove from wishlist and refresh
       await get().getWishlist();
     } catch (err) {

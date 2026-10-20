@@ -56,7 +56,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       const response = await apiClient.get<{
         success: boolean;
         data: CartWithItems;
-      }>("/orders/cart");
+      }>("/cart");
 
       set({ cart: response.data.data, isLoading: false });
     } catch {
@@ -68,7 +68,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   addItem: async (variantId: string, quantity = 1) => {
     set({ isAdding: true });
     try {
-      await apiClient.post("/orders/cart/items", { variantId, quantity });
+      await apiClient.post("/cart/items", { variantId, quantity });
       // Refresh cart
       await get().getCart();
     } catch (err) {
@@ -92,7 +92,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     }));
 
     try {
-      await apiClient.put(`/orders/cart/items/${itemId}`, { quantity });
+      await apiClient.put(`/cart/items/${itemId}`, { quantity });
       // Refresh to get server-confirmed state
       await get().getCart();
     } catch {
@@ -114,7 +114,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     }));
 
     try {
-      await apiClient.delete(`/orders/cart/items/${itemId}`);
+      await apiClient.delete(`/cart/items/${itemId}`);
       await get().getCart();
     } catch {
       await get().getCart();
@@ -125,7 +125,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   mergeCart: async (items) => {
     if (items.length === 0) return;
     try {
-      await apiClient.post("/orders/cart/merge", { items });
+      await apiClient.post("/cart/merge", { items });
       await get().getCart();
     } catch {
       // Silent — merge is best-effort, items are already in the backend cart
@@ -134,7 +134,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
   clearCart: async () => {
     try {
-      await apiClient.delete("/orders/cart");
+      await apiClient.delete("/cart");
       set({ cart: null });
     } catch {
       throw new Error("Failed to clear cart");
