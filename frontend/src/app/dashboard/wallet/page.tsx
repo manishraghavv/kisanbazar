@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
+import { apiErrorMessage, runCheckout, verifyPayment, type GatewayDetails } from "@/lib/razorpay";
 import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Loader2, Eye, EyeOff, X, ChevronLeft, ChevronRight, CreditCard, History, Download } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -68,7 +69,6 @@ function exportWalletCSV(transactions: WalletTransaction[]) {
 
 function AddMoneyModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [amount, setAmount] = useState("");
-  const [remarks, setRemarks] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState("");
 
@@ -88,16 +88,31 @@ function AddMoneyModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
     setIsAdding(true);
     setError("");
     try {
-      await apiClient.post("/wallet/add-money", {
-        amount: numAmount,
-        remarks: remarks.trim() || undefined,
-      });
+      // 1. The server creates a gateway order. The wallet is NOT credited yet.
+      const started = await apiClient.post<{
+        success: boolean;
+        data: { payment: { id: string }; gateway: GatewayDetails };
+      }>("/wallet/add-money", { amount: numAmount });
+      const { payment, gateway } = started.data.data;
+
+      // 2. The customer pays in Razorpay Checkout.
+      const outcome = await runCheckout(gateway, { description: "Wallet top-up" });
+      if (outcome.status === "cancelled") {
+        setError("Payment cancelled. No money was added.");
+        return;
+      }
+      if (outcome.status === "failed") {
+        setError(outcome.message);
+        return;
+      }
+
+      // 3. The server verifies the signature and only then credits the wallet.
+      await verifyPayment(payment.id, outcome.result);
       toast.success(`₹${numAmount.toLocaleString("en-IN")} added to wallet`);
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(axiosError.response?.data?.message ?? "Failed to add money");
+      setError(apiErrorMessage(err, "Failed to add money"));
     } finally {
       setIsAdding(false);
     }
@@ -161,20 +176,6 @@ function AddMoneyModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-3 pl-8 text-sm outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-2 dark:focus:ring-offset-gray-800 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20"
               />
             </div>
-          </div>
-
-          {/* Remarks */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 dark:text-gray-500">
-              Remarks (optional)
-            </label>
-            <input
-              type="text"
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="e.g. Wallet top-up"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-3 text-sm outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-2 dark:focus:ring-offset-gray-800 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20"
-            />
           </div>
 
           {error && (

@@ -26,6 +26,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
+import { apiErrorMessage, runCheckout, verifyPayment, type GatewayDetails } from "@/lib/razorpay";
+import { useAuthStore } from "@/stores/authStore";
 import type { CouponItem } from "@/types/auth";
 
 // ─── Payment methods ─────────────────────────────────────────────────────────
@@ -53,7 +55,9 @@ function formatCurrency(amount: number) {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type CheckoutStep = "review" | "address" | "payment" | "confirming" | "success";
+type CheckoutStep = "review" | "address" | "payment" | "confirming" | "payment_pending" | "success";
+
+const ONLINE_METHODS = ["UPI", "CARD", "NET_BANKING"];
 
 // ─── Step Indicator ───────────────────────────────────────────────────────────
 
@@ -182,6 +186,9 @@ export default function CheckoutPage() {
   const [selectedKhataId, setSelectedKhataId] = useState<string | null>(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [placedOrderNumber, setPlacedOrderNumber] = useState("");
+  const [placedOrderId, setPlacedOrderId] = useState("");
+  const [paymentIssue, setPaymentIssue] = useState("");
+  const user = useAuthStore((s) => s.user);
 
   // Coupon state
   const [couponCode, setCouponCode] = useState("");
@@ -280,6 +287,43 @@ export default function CheckoutPage() {
 
   // ── Place order ──
 
+  /**
+   * Online payment for an order that already exists: ask the server for a gateway order, open Razorpay Checkout,
+   * then post the signed result back for verification. Cancel/failure leaves the order PENDING and offers a retry.
+   */
+  const payOnline = async (orderId: string, orderNumber: string, method: string) => {
+    setStep("confirming");
+    setPaymentIssue("");
+    try {
+      const init = await apiClient.post<{
+        success: boolean;
+        data: { payment: { id: string }; gateway: GatewayDetails };
+      }>("/payments/initiate", { orderId, paymentMethod: method });
+      const { payment, gateway } = init.data.data;
+
+      const outcome = await runCheckout(gateway, {
+        description: `Order ${orderNumber}`,
+        prefill: { name: user?.fullName, contact: user?.phoneNumber, email: user?.email ?? undefined },
+      });
+      if (outcome.status === "cancelled") {
+        setPaymentIssue("You closed the payment window before paying. Your order is saved and waiting for payment.");
+        setStep("payment_pending");
+        return;
+      }
+      if (outcome.status === "failed") {
+        setPaymentIssue(outcome.message);
+        setStep("payment_pending");
+        return;
+      }
+      await verifyPayment(payment.id, outcome.result);
+      setStep("success");
+      toast.success("Payment received. Order confirmed!");
+    } catch (err: unknown) {
+      setPaymentIssue(apiErrorMessage(err, "We could not complete the payment. You have not been charged twice."));
+      setStep("payment_pending");
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (!canPlaceOrder) return;
     setStep("confirming");
@@ -293,14 +337,25 @@ export default function CheckoutPage() {
         couponCode: appliedCoupon?.code || undefined,
       });
       setPlacedOrderNumber(order.orderNumber);
-      setStep("success");
-      toast.success("Order placed successfully!");
+      setPlacedOrderId(order.id);
       // Store last order ID for the confirmation page
       sessionStorage.setItem("lastOrderId", order.id);
       sessionStorage.setItem("lastOrderNumber", order.orderNumber);
+
+      if (ONLINE_METHODS.includes(paymentMethod)) {
+        // The order exists now (stock is held); collect the money.
+        await payOnline(order.id, order.orderNumber, paymentMethod);
+        return;
+      }
+      if (paymentMethod === "COD") {
+        // Record the expected cash payment; failure here must not undo a placed order.
+        apiClient.post("/payments/initiate", { orderId: order.id, paymentMethod: "COD" }).catch(() => {});
+      }
+      // WALLET is debited atomically at checkout and KHATA_CREDIT is posted to the ledger by the server.
+      setStep("success");
+      toast.success("Order placed successfully!");
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      toast.error(axiosError.response?.data?.message ?? "Failed to place order");
+      toast.error(apiErrorMessage(err, "Failed to place order"));
       setStep("payment");
     } finally {
       setIsPlacingOrder(false);
@@ -337,6 +392,42 @@ export default function CheckoutPage() {
             <ShoppingBag size={16} />
             Browse Products
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Payment pending (cancelled / failed online payment) ──
+
+  if (step === "payment_pending") {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="flex flex-col items-center py-12 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+            <CreditCard size={32} className="text-amber-700 dark:text-amber-300" />
+          </div>
+          <h2 className="mt-6 text-2xl font-bold text-gray-900 dark:text-gray-100">Payment not completed</h2>
+          <p className="mt-2 max-w-md text-sm text-gray-600 dark:text-gray-300">{paymentIssue}</p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Order <span className="font-semibold">#{placedOrderNumber}</span> is saved. You can retry now or pay later from
+            your orders.
+          </p>
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={() =>
+                payOnline(placedOrderId, placedOrderNumber, ONLINE_METHODS.includes(paymentMethod) ? paymentMethod : "UPI")
+              }
+              className="flex items-center gap-2 rounded-lg bg-emerald-700 px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-emerald-800"
+            >
+              Retry payment
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard/orders/${placedOrderId}`)}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 px-6 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+            >
+              View order
+            </button>
+          </div>
         </div>
       </div>
     );
