@@ -8,7 +8,8 @@ export const registerSchema = Joi.object({
     .messages({ 'string.pattern.base': 'Enter a valid 10-digit Indian mobile number' }),
   email: Joi.string().email().optional(),
   password: Joi.string().min(6).required(),
-  role: Joi.string().valid('FARMER', 'VENDOR', 'ADMIN', 'DELIVERY').required(),
+  // ADMIN and DELIVERY accounts are provisioned by admins, never self-registered.
+  role: Joi.string().valid('FARMER', 'VENDOR').required(),
   referralCode: Joi.string().optional(),
   languagePref: Joi.string().valid('hi', 'en', 'mr', 'pa', 'ta').default('hi'),
   deviceType: Joi.string().valid('android', 'ios', 'web').optional(),
