@@ -8,7 +8,7 @@
  */
 
 import { prisma } from '../common/lib/prisma';
-import { postKhataEntryTx } from '../modules/khata/khata.ledger';
+import { postKhataEntryTx, reconcileKhata, KhataReconciliationRow } from '../modules/khata/khata.ledger';
 import cron from 'node-cron';
 import { dispatch } from '../common/services/notification-dispatch';
 
@@ -19,6 +19,7 @@ const INTEREST_CRON_SCHEDULE = process.env.CRON_INTEREST_SCHEDULE || '0 0 * * *'
 const OVERDUE_CRON_SCHEDULE = process.env.CRON_OVERDUE_SCHEDULE || '0 1 * * *'; // Daily 1 AM
 const CART_CLEANUP_SCHEDULE = process.env.CRON_CART_CLEANUP_SCHEDULE || '0 3 * * *'; // Daily 3 AM
 const PRICE_ALERT_SCHEDULE = process.env.CRON_PRICE_ALERT_SCHEDULE || '0 4 * * *'; // Daily 4 AM
+const RECONCILE_SCHEDULE = process.env.CRON_RECONCILE_SCHEDULE || '30 2 * * *'; // Daily 2:30 AM
 const REPAYMENT_REMINDER_SCHEDULE = process.env.CRON_REPAYMENT_REMINDER_SCHEDULE || '0 8 * * *'; // Daily 8 AM
 const GRACE_PERIOD_DAYS = Number(process.env.INTEREST_GRACE_PERIOD_DAYS) || 0;
 const OVERDUE_ESCALATION_DAYS = Number(process.env.OVERDUE_ESCALATION_DAYS) || 30;
@@ -38,6 +39,7 @@ const cronRuns: Record<
   cartCleanup: { lastRun: null, lastStatus: 'never' },
   priceAlert: { lastRun: null, lastStatus: 'never' },
   repaymentReminder: { lastRun: null, lastStatus: 'never' },
+  reconciliation: { lastRun: null, lastStatus: 'never' },
 };
 
 export function getCronStatus() {
@@ -490,6 +492,39 @@ export async function runPriceAlerts(): Promise<{ alertsSent: number; errors: st
 //  Cron Scheduler — Start all jobs
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Compares every khata account's stored balance with the sum of its ledger entries. Drift means a bug or a manual
+ * database edit touched money outside the ledger, so it is logged as an error and every admin is notified.
+ */
+export async function runKhataReconciliation(): Promise<{ drift: KhataReconciliationRow[] }> {
+  const drift = await reconcileKhata();
+  cronRuns.reconciliation = {
+    lastRun: new Date(),
+    lastStatus: drift.length > 0 ? `DRIFT in ${drift.length} accounts` : 'success',
+    accountsProcessed: drift.length,
+  };
+  if (drift.length > 0) {
+    console.error(
+      `[RECONCILE] DRIFT in ${drift.length} khata account(s): ` +
+        drift.map((d) => `${d.accountId} (stored ${d.outstandingAmount}, ledger ${d.ledgerBalance})`).join('; '),
+    );
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true } });
+    for (const admin of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: admin.id,
+          title: 'Khata reconciliation drift',
+          message: `${drift.length} khata account(s) have a balance that does not match their ledger. Check GET /api/admin/reconciliation/khata.`,
+          type: 'KHATA_REMINDER',
+        },
+      });
+    }
+  } else {
+    console.log('[RECONCILE] Khata balances match the ledger');
+  }
+  return { drift };
+}
+
 export function startCronJobs(): void {
   if (!CRON_ENABLED) {
     console.log('[CRON] Cron jobs disabled (CRON_ENABLED=false)');
@@ -505,6 +540,15 @@ export function startCronJobs(): void {
     console.log(
       `[CRON] Interest calculation complete: ${result.processed} accounts processed, ${result.errors.length} errors`,
     );
+  });
+
+  // Ledger reconciliation (daily 2:30 AM)
+  cron.schedule(RECONCILE_SCHEDULE, async () => {
+    try {
+      await runKhataReconciliation();
+    } catch (err) {
+      console.error('[RECONCILE] failed:', (err as Error).message);
+    }
   });
 
   // B.3 — Overdue Escalation (daily 1 AM)

@@ -14,6 +14,7 @@ import {
 } from './cron.controller';
 import { downloadInvoice, getInvoiceData, downloadBulkInvoices } from '../orders/invoice.controller';
 import { CouponService } from '../payments/payment.service';
+import { reconcileKhata } from '../khata/khata.ledger';
 
 const router = Router();
 
@@ -89,6 +90,14 @@ router.use('/admin', authenticate, authorize('ADMIN'));
 //  CRON TRIGGERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Khata ledger reconciliation: accounts whose stored balance disagrees with the sum of their ledger entries.
+router.get(
+  '/admin/reconciliation/khata',
+  asyncHandler(async (_req, res) => {
+    const drift = await reconcileKhata();
+    res.json({ success: true, data: { ok: drift.length === 0, driftCount: drift.length, drift } });
+  }),
+);
 router.post(
   '/admin/crons/interest',
   asyncHandler((req, res) => triggerInterestCalculation(req as AuthRequest, res)),
