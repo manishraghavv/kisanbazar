@@ -35,7 +35,9 @@ export const requireMetricsAccess: RequestHandler = (req: Request, res: Response
 /** Swagger UI is disabled (404) in production unless ENABLE_API_DOCS=true is set explicitly. */
 export const apiDocsGate: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
   if (isProduction() && process.env.ENABLE_API_DOCS !== 'true') {
-    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.path} not found` } });
+    res
+      .status(404)
+      .json({ success: false, error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.path} not found` } });
     return;
   }
   next();

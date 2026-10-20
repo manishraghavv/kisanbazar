@@ -32,11 +32,7 @@ function getClient() {
 
 // ── Send Email ───────────────────────────────────────────────────────────────
 
-export async function sendEmail(
-  to: string,
-  subject: string,
-  bodyHtml: string,
-): Promise<boolean> {
+export async function sendEmail(to: string, subject: string, bodyHtml: string): Promise<boolean> {
   const client = getClient();
   if (!client) {
     console.log(`[EMAIL-DEV] Would send email to ${to}: ${subject}`);

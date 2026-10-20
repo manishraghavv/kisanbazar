@@ -43,12 +43,31 @@ function validate(schema: ReturnType<typeof import('joi').object>) {
 }
 
 // Current user
-router.get('/me', authenticate, asyncHandler((req, res) => getMe(req as AuthRequest, res)));
-router.put('/me', authenticate, validate(updateProfileSchema), asyncHandler((req, res) => updateMe(req as AuthRequest, res)));
+router.get(
+  '/me',
+  authenticate,
+  asyncHandler((req, res) => getMe(req as AuthRequest, res)),
+);
+router.put(
+  '/me',
+  authenticate,
+  validate(updateProfileSchema),
+  asyncHandler((req, res) => updateMe(req as AuthRequest, res)),
+);
 
 // Self-service actions
-router.put('/me/phone', authenticate, validate(changePhoneSchema), asyncHandler((req, res) => changeMyPhone(req as AuthRequest, res)));
-router.delete('/me', authenticate, validate(deleteAccountSchema), asyncHandler((req, res) => deleteMyAccount(req as AuthRequest, res)));
+router.put(
+  '/me/phone',
+  authenticate,
+  validate(changePhoneSchema),
+  asyncHandler((req, res) => changeMyPhone(req as AuthRequest, res)),
+);
+router.delete(
+  '/me',
+  authenticate,
+  validate(deleteAccountSchema),
+  asyncHandler((req, res) => deleteMyAccount(req as AuthRequest, res)),
+);
 
 // Role-specific profiles
 router.put(
@@ -78,7 +97,13 @@ router.get(
 router.get('/', authenticate, authorize('ADMIN'), asyncHandler(listUsers));
 router.get('/:id', authenticate, authorize('ADMIN'), asyncHandler(getUserById));
 router.put('/:id', authenticate, authorize('ADMIN'), validate(adminUpdateUserSchema), asyncHandler(updateUserById));
-router.put('/:id/status', authenticate, authorize('ADMIN'), validate(updateUserStatusSchema), asyncHandler((req, res) => updateUserStatus(req as AuthRequest, res)));
+router.put(
+  '/:id/status',
+  authenticate,
+  authorize('ADMIN'),
+  validate(updateUserStatusSchema),
+  asyncHandler((req, res) => updateUserStatus(req as AuthRequest, res)),
+);
 router.delete('/:id', authenticate, authorize('ADMIN'), asyncHandler(deleteUserById));
 
 export default router;

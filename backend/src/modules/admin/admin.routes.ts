@@ -12,11 +12,7 @@ import {
   triggerPriceAlerts,
   getCronStatusController,
 } from './cron.controller';
-import {
-  downloadInvoice,
-  getInvoiceData,
-  downloadBulkInvoices,
-} from '../orders/invoice.controller';
+import { downloadInvoice, getInvoiceData, downloadBulkInvoices } from '../orders/invoice.controller';
 import { CouponService } from '../payments/payment.service';
 
 const router = Router();
@@ -93,12 +89,30 @@ router.use('/admin', authenticate, authorize('ADMIN'));
 //  CRON TRIGGERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.post('/admin/crons/interest', asyncHandler((req, res) => triggerInterestCalculation(req as AuthRequest, res)));
-router.post('/admin/crons/overdue', asyncHandler((req, res) => triggerOverdueEscalation(req as AuthRequest, res)));
-router.post('/admin/crons/reminders', asyncHandler((req, res) => triggerRepaymentReminders(req as AuthRequest, res)));
-router.post('/admin/crons/clear-carts', asyncHandler((req, res) => triggerCartCleanup(req as AuthRequest, res)));
-router.post('/admin/crons/price-alerts', asyncHandler((req, res) => triggerPriceAlerts(req as AuthRequest, res)));
-router.get('/admin/crons/status', asyncHandler((req, res) => getCronStatusController(req as AuthRequest, res)));
+router.post(
+  '/admin/crons/interest',
+  asyncHandler((req, res) => triggerInterestCalculation(req as AuthRequest, res)),
+);
+router.post(
+  '/admin/crons/overdue',
+  asyncHandler((req, res) => triggerOverdueEscalation(req as AuthRequest, res)),
+);
+router.post(
+  '/admin/crons/reminders',
+  asyncHandler((req, res) => triggerRepaymentReminders(req as AuthRequest, res)),
+);
+router.post(
+  '/admin/crons/clear-carts',
+  asyncHandler((req, res) => triggerCartCleanup(req as AuthRequest, res)),
+);
+router.post(
+  '/admin/crons/price-alerts',
+  asyncHandler((req, res) => triggerPriceAlerts(req as AuthRequest, res)),
+);
+router.get(
+  '/admin/crons/status',
+  asyncHandler((req, res) => getCronStatusController(req as AuthRequest, res)),
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  INVOICE ENDPOINTS (Authenticated users - own orders, or admin/vendor)
@@ -109,9 +123,22 @@ export { router as adminRouter };
 // Export invoice routes for mounting on main app (non-admin users also need access)
 export const invoiceRouter = Router();
 
-invoiceRouter.get('/orders/:id/invoice', authenticate, asyncHandler((req, res) => downloadInvoice(req as AuthRequest, res)));
-invoiceRouter.get('/orders/:id/invoice-data', authenticate, asyncHandler((req, res) => getInvoiceData(req as AuthRequest, res)));
-invoiceRouter.post('/orders/bulk-invoices', authenticate, authorize('ADMIN'), asyncHandler((req, res) => downloadBulkInvoices(req as AuthRequest, res)));
+invoiceRouter.get(
+  '/orders/:id/invoice',
+  authenticate,
+  asyncHandler((req, res) => downloadInvoice(req as AuthRequest, res)),
+);
+invoiceRouter.get(
+  '/orders/:id/invoice-data',
+  authenticate,
+  asyncHandler((req, res) => getInvoiceData(req as AuthRequest, res)),
+);
+invoiceRouter.post(
+  '/orders/bulk-invoices',
+  authenticate,
+  authorize('ADMIN'),
+  asyncHandler((req, res) => downloadBulkInvoices(req as AuthRequest, res)),
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  B.8 — AUTO-APPLY COUPON

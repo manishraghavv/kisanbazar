@@ -162,12 +162,7 @@ export const cancelOrder = async (req: AuthRequest, res: Response): Promise<void
 
 export const createPayment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const payment = await OrderService.addPayment(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      req.body,
-    );
+    const payment = await OrderService.addPayment(req.params.id as string, req.user.id, req.user.role, req.body);
     res.status(201).json({ success: true, message: 'Payment recorded', data: payment });
   } catch (err) {
     handleServiceError(err, res);
@@ -176,11 +171,7 @@ export const createPayment = async (req: AuthRequest, res: Response): Promise<vo
 
 export const getPayments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const payments = await OrderService.getPayments(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const payments = await OrderService.getPayments(req.params.id as string, req.user.id, req.user.role);
     res.json({ success: true, data: payments });
   } catch (err) {
     handleServiceError(err, res);

@@ -4,7 +4,9 @@
  */
 export function logOtpForDev(phoneNumber: string, otp: string, env: NodeJS.ProcessEnv = process.env): void {
   if (env.NODE_ENV === 'production') {
-    console.warn(`[OTP] SMS delivery is disabled (SMS_ENABLED != true); OTP for ${maskPhone(phoneNumber)} was generated but NOT delivered`);
+    console.warn(
+      `[OTP] SMS delivery is disabled (SMS_ENABLED != true); OTP for ${maskPhone(phoneNumber)} was generated but NOT delivered`,
+    );
     return;
   }
   console.log(`[DEV] OTP for ${phoneNumber}: ${otp}`);

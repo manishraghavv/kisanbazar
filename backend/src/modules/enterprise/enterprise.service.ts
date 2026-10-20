@@ -1,9 +1,6 @@
 import { Prisma, EnterpriseSize } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
-import {
-  NotFoundError,
-  ConflictError,
-} from '../../common/errors';
+import { NotFoundError, ConflictError } from '../../common/errors';
 
 export const EnterpriseService = {
   async createIndustry(data: { name: string; slug: string; description?: string; isActive?: boolean }) {
@@ -44,14 +41,20 @@ export const EnterpriseService = {
   },
 
   async createTier(data: {
-    name: string; size: string; minAnnualRevenue?: number; maxAnnualRevenue?: number;
-    defaultCommissionRate?: number; maxKhataLimit?: number; description?: string;
+    name: string;
+    size: string;
+    minAnnualRevenue?: number;
+    maxAnnualRevenue?: number;
+    defaultCommissionRate?: number;
+    maxKhataLimit?: number;
+    description?: string;
   }) {
     const sizeExists = await prisma.enterpriseTier.findUnique({ where: { size: data.size as EnterpriseSize } });
     if (sizeExists) throw new ConflictError(`Tier for size "${data.size}" already exists`);
     return prisma.enterpriseTier.create({
       data: {
-        name: data.name, size: data.size as EnterpriseSize,
+        name: data.name,
+        size: data.size as EnterpriseSize,
         minAnnualRevenue: data.minAnnualRevenue ? new Prisma.Decimal(data.minAnnualRevenue) : undefined,
         maxAnnualRevenue: data.maxAnnualRevenue ? new Prisma.Decimal(data.maxAnnualRevenue) : undefined,
         defaultCommissionRate: data.defaultCommissionRate ? new Prisma.Decimal(data.defaultCommissionRate) : undefined,
@@ -116,20 +119,32 @@ export const EnterpriseService = {
     });
     if (!vendor) throw new NotFoundError('Vendor profile not found');
     return vendor;
-  }
+  },
 };
 
 export const AuditLogService = {
   async create(data: {
-    actorId?: string; actorRole?: string; action: string;
-    entityType: string; entityId: string; oldData?: any; newData?: any; ipAddress?: string;
+    actorId?: string;
+    actorRole?: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    oldData?: any;
+    newData?: any;
+    ipAddress?: string;
   }) {
     return prisma.auditLog.create({ data });
   },
 
   async list(filters: {
-    page: number; limit: number; entityType?: string; entityId?: string;
-    action?: string; actorId?: string; startDate?: string; endDate?: string;
+    page: number;
+    limit: number;
+    entityType?: string;
+    entityId?: string;
+    action?: string;
+    actorId?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
     const { page, limit, entityType, entityId, action, actorId, startDate, endDate } = filters;
     const skip = (page - 1) * limit;
@@ -148,19 +163,29 @@ export const AuditLogService = {
       prisma.auditLog.count({ where }),
     ]);
     return { logs, total, page, limit, totalPages: Math.ceil(total / limit) };
-  }
+  },
 };
 
 export const AnalyticsService = {
   async trackProductView(productId: string, data: { userId?: string; ipAddress?: string; sessionId?: string }) {
     return prisma.productView.create({
-      data: { productId, userId: data.userId || null, ipAddress: data.ipAddress || null, sessionId: data.sessionId || null },
+      data: {
+        productId,
+        userId: data.userId || null,
+        ipAddress: data.ipAddress || null,
+        sessionId: data.sessionId || null,
+      },
     });
   },
 
   async trackSearch(data: { userId?: string; keyword: string; resultCount?: number; sessionId?: string }) {
     return prisma.searchHistory.create({
-      data: { userId: data.userId || null, keyword: data.keyword, resultCount: data.resultCount || null, sessionId: data.sessionId || null },
+      data: {
+        userId: data.userId || null,
+        keyword: data.keyword,
+        resultCount: data.resultCount || null,
+        sessionId: data.sessionId || null,
+      },
     });
   },
 
@@ -200,8 +225,10 @@ export const AnalyticsService = {
           include: { product: { select: { name: true, slug: true } } },
         });
         return {
-          variantId: item.variantId, variantName: variant?.variantName || 'Unknown',
-          productName: variant?.product.name || 'Unknown', productSlug: variant?.product.slug || '',
+          variantId: item.variantId,
+          variantName: variant?.variantName || 'Unknown',
+          productName: variant?.product.name || 'Unknown',
+          productSlug: variant?.product.slug || '',
           totalSold: item._sum.quantity || 0,
         };
       }),
@@ -280,7 +307,8 @@ export const AnalyticsService = {
 
     const recentUsers = await prisma.user.findMany({
       where: { createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-      orderBy: { createdAt: 'desc' }, take: 10,
+      orderBy: { createdAt: 'desc' },
+      take: 10,
       select: { id: true, fullName: true, role: true, createdAt: true },
     });
 
@@ -289,18 +317,24 @@ export const AnalyticsService = {
       platformRevenue: Number(revenueAgg._sum.commissionAmount || 0),
       users: { total: totalUsers, farmers: activeFarmers, vendors: activeVendors },
       khata: {
-        totalAccounts: totalKhataAccounts, overdueAccounts: overdueKhataAccounts,
+        totalAccounts: totalKhataAccounts,
+        overdueAccounts: overdueKhataAccounts,
         defaultRate: totalKhataAccounts > 0 ? ((overdueKhataAccounts / totalKhataAccounts) * 100).toFixed(1) : '0.0',
       },
       orders: {
-        total: totalOrders, delivered: deliveredOrders, cancelled: cancelledOrders,
+        total: totalOrders,
+        delivered: deliveredOrders,
+        cancelled: cancelledOrders,
         conversionRate: totalOrders > 0 ? ((deliveredOrders / totalOrders) * 100).toFixed(1) : '0.0',
       },
       recentRegistrations: recentUsers,
     };
   },
 
-  async getSalesReport(vendorUserId: string | null, filters: { page: number; limit: number; startDate?: string; endDate?: string; categoryId?: string }) {
+  async getSalesReport(
+    vendorUserId: string | null,
+    filters: { page: number; limit: number; startDate?: string; endDate?: string; categoryId?: string },
+  ) {
     const { page, limit, startDate, endDate, categoryId } = filters;
     const skip = (page - 1) * limit;
     const where: Prisma.OrderWhereInput = { status: 'DELIVERED' };
@@ -308,7 +342,14 @@ export const AnalyticsService = {
       const vendor = await prisma.vendor.findUnique({ where: { userId: vendorUserId } });
       if (vendor) where.items = { some: { variant: { product: { vendorId: vendor.id } } } };
     }
-    if (categoryId) where.items = { ...where.items as any, some: { ...(where.items as any)?.some, variant: { product: { ...(where.items as any)?.some?.variant?.product, categoryId } } } };
+    if (categoryId)
+      where.items = {
+        ...(where.items as any),
+        some: {
+          ...(where.items as any)?.some,
+          variant: { product: { ...(where.items as any)?.some?.variant?.product, categoryId } },
+        },
+      };
     const dateFilterFields: Record<string, Date> = {};
     if (startDate) dateFilterFields.gte = new Date(startDate);
     if (endDate) dateFilterFields.lte = new Date(endDate);
@@ -316,8 +357,14 @@ export const AnalyticsService = {
 
     const [orders, total, amountAgg] = await Promise.all([
       prisma.order.findMany({
-        where, skip, take: limit, orderBy: { createdAt: 'desc' },
-        include: { items: { include: { variant: { include: { product: { select: { name: true, slug: true } } } } } }, user: { select: { fullName: true } } },
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: { include: { variant: { include: { product: { select: { name: true, slug: true } } } } } },
+          user: { select: { fullName: true } },
+        },
       }),
       prisma.order.count({ where }),
       prisma.order.aggregate({ where, _sum: { totalAmount: true }, _count: true }),
@@ -327,7 +374,14 @@ export const AnalyticsService = {
     return { orders, summary, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
-  async getProductPerformance(filters: { page: number; limit: number; startDate?: string; endDate?: string; categoryId?: string; vendorId?: string }) {
+  async getProductPerformance(filters: {
+    page: number;
+    limit: number;
+    startDate?: string;
+    endDate?: string;
+    categoryId?: string;
+    vendorId?: string;
+  }) {
     const { page, limit, startDate, endDate, categoryId, vendorId } = filters;
     const skip = (page - 1) * limit;
     const where: Prisma.ProductWhereInput = {};
@@ -336,7 +390,9 @@ export const AnalyticsService = {
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
-        where, skip, take: limit,
+        where,
+        skip,
+        take: limit,
         include: {
           category: { select: { name: true } },
           vendor: { select: { businessName: true } },
@@ -354,7 +410,11 @@ export const AnalyticsService = {
           where: { variantId: { in: variantIds } },
           _sum: { quantity: true },
         });
-        return { ...product, totalSold: Number(orderAgg._sum.quantity || 0), inStock: product.variants.reduce((s, v) => s + (v.stockQuantity - v.reservedQty), 0) };
+        return {
+          ...product,
+          totalSold: Number(orderAgg._sum.quantity || 0),
+          inStock: product.variants.reduce((s, v) => s + (v.stockQuantity - v.reservedQty), 0),
+        };
       }),
     );
     return { products: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -365,24 +425,38 @@ export const AnalyticsService = {
     const skip = (page - 1) * limit;
     const overdueDate = new Date();
     overdueDate.setDate(overdueDate.getDate() - minOverdueDays);
-    const where: Prisma.KhataAccountWhereInput = { status: { in: ['OVERDUE', 'ACTIVE'] }, dueDateNextPayment: { lte: overdueDate } };
+    const where: Prisma.KhataAccountWhereInput = {
+      status: { in: ['OVERDUE', 'ACTIVE'] },
+      dueDateNextPayment: { lte: overdueDate },
+    };
 
     const [accounts, total] = await Promise.all([
       prisma.khataAccount.findMany({
-        where, skip, take: limit, orderBy: { dueDateNextPayment: 'asc' },
-        include: { vendor: { select: { businessName: true } }, farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } } },
+        where,
+        skip,
+        take: limit,
+        orderBy: { dueDateNextPayment: 'asc' },
+        include: {
+          vendor: { select: { businessName: true } },
+          farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
+        },
       }),
       prisma.khataAccount.count({ where }),
     ]);
     return { accounts, total, page, limit, totalPages: Math.ceil(total / limit) };
-  },  // ── Market Intelligence ────────────────────────────────────────────────────
+  }, // ── Market Intelligence ────────────────────────────────────────────────────
 
   async getMarketIntelligence(filters: {
-    startDate?: string; endDate?: string;
-    trendingPage?: number; trendingLimit?: number;
-    topSellingPage?: number; topSellingLimit?: number;
-    searchesPage?: number; searchesLimit?: number;
-    categoriesPage?: number; categoriesLimit?: number;
+    startDate?: string;
+    endDate?: string;
+    trendingPage?: number;
+    trendingLimit?: number;
+    topSellingPage?: number;
+    topSellingLimit?: number;
+    searchesPage?: number;
+    searchesLimit?: number;
+    categoriesPage?: number;
+    categoriesLimit?: number;
   }) {
     const { startDate, endDate } = filters;
     const trendingPage = filters.trendingPage || 1;
@@ -419,22 +493,27 @@ export const AnalyticsService = {
     const trendingPaged = trendingViews.slice(trendingSkip, trendingSkip + trendingLimit);
 
     const trendingProductIds = trendingPaged.map((v) => v.productId);
-    const trendingProducts = trendingProductIds.length > 0
-      ? await prisma.product.findMany({
-          where: { id: { in: trendingProductIds } },
-          select: {
-            id: true, name: true, slug: true,
-            category: { select: { name: true } },
-            vendor: { select: { businessName: true } },
-            images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
-          },
-        })
-      : [];
+    const trendingProducts =
+      trendingProductIds.length > 0
+        ? await prisma.product.findMany({
+            where: { id: { in: trendingProductIds } },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              category: { select: { name: true } },
+              vendor: { select: { businessName: true } },
+              images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
+            },
+          })
+        : [];
 
-    const trendingWithViews = trendingProducts.map((p) => ({
-      ...p,
-      viewCount: trendingViews.find((v) => v.productId === p.id)?._count.id ?? 0,
-    })).sort((a, b) => b.viewCount - a.viewCount);
+    const trendingWithViews = trendingProducts
+      .map((p) => ({
+        ...p,
+        viewCount: trendingViews.find((v) => v.productId === p.id)?._count.id ?? 0,
+      }))
+      .sort((a, b) => b.viewCount - a.viewCount);
 
     // 2. Popular search keywords — paginated
     const searchesSkip = (searchesPage - 1) * searchesLimit;
@@ -463,7 +542,9 @@ export const AnalyticsService = {
               select: {
                 quantity: true,
                 unitPrice: true,
-                variant: { select: { product: { select: { categoryId: true, category: { select: { name: true } } } } } },
+                variant: {
+                  select: { product: { select: { categoryId: true, category: { select: { name: true } } } } },
+                },
               },
             },
           },
@@ -510,30 +591,44 @@ export const AnalyticsService = {
     const topSellingPaged = allTopSellingItems.slice(topSellingSkip, topSellingSkip + topSellingLimit);
 
     const variantIds = topSellingPaged.map((i) => i.variantId);
-    const variants = variantIds.length > 0
-      ? await prisma.productVariant.findMany({
-          where: { id: { in: variantIds } },
-          select: {
-            id: true, sku: true, variantName: true, sellingPrice: true,
-            product: { select: { id: true, name: true, slug: true, category: { select: { name: true } }, vendor: { select: { businessName: true } } } },
-          },
-        })
-      : [];
+    const variants =
+      variantIds.length > 0
+        ? await prisma.productVariant.findMany({
+            where: { id: { in: variantIds } },
+            select: {
+              id: true,
+              sku: true,
+              variantName: true,
+              sellingPrice: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  category: { select: { name: true } },
+                  vendor: { select: { businessName: true } },
+                },
+              },
+            },
+          })
+        : [];
 
-    const topSellingProducts = topSellingPaged.map((i) => {
-      const v = variants.find((v) => v.id === i.variantId);
-      return {
-        variantId: i.variantId,
-        productName: v?.product.name ?? 'Unknown',
-        productSlug: v?.product.slug ?? '',
-        variantName: v?.variantName ?? 'Default',
-        sku: v?.sku ?? '',
-        sellingPrice: Number(v?.sellingPrice ?? 0),
-        categoryName: v?.product.category.name ?? '',
-        vendorName: v?.product.vendor.businessName ?? '',
-        totalSold: i._sum.quantity ?? 0,
-      };
-    }).sort((a, b) => b.totalSold - a.totalSold);
+    const topSellingProducts = topSellingPaged
+      .map((i) => {
+        const v = variants.find((v) => v.id === i.variantId);
+        return {
+          variantId: i.variantId,
+          productName: v?.product.name ?? 'Unknown',
+          productSlug: v?.product.slug ?? '',
+          variantName: v?.variantName ?? 'Default',
+          sku: v?.sku ?? '',
+          sellingPrice: Number(v?.sellingPrice ?? 0),
+          categoryName: v?.product.category.name ?? '',
+          vendorName: v?.product.vendor.businessName ?? '',
+          totalSold: i._sum.quantity ?? 0,
+        };
+      })
+      .sort((a, b) => b.totalSold - a.totalSold);
 
     // 5. Sales trend (daily for the period)
     const daysInPeriod = 30;
@@ -542,9 +637,7 @@ export const AnalyticsService = {
       const day = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
       const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-      const dayOrders = ordersInPeriod.filter(
-        (o) => o.createdAt >= dayStart && o.createdAt < dayEnd
-      );
+      const dayOrders = ordersInPeriod.filter((o) => o.createdAt >= dayStart && o.createdAt < dayEnd);
       const daySales = dayOrders.reduce((sum, o) => {
         return sum + o.items.reduce((s, i) => s + Number(i.unitPrice) * i.quantity, 0);
       }, 0);
@@ -611,23 +704,38 @@ export const AnalyticsService = {
   async exportUserData(userId: string, types: string[]) {
     const result: Record<string, any> = {};
     if (types.includes('profile')) {
-      result.profile = await prisma.user.findUnique({ where: { id: userId }, include: { farmerProfile: true, vendorProfile: true, addresses: true } });
+      result.profile = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { farmerProfile: true, vendorProfile: true, addresses: true },
+      });
     }
     if (types.includes('orders')) {
-      result.orders = await prisma.order.findMany({ where: { userId }, include: { items: true, statusHistory: true, payments: true }, orderBy: { createdAt: 'desc' } });
+      result.orders = await prisma.order.findMany({
+        where: { userId },
+        include: { items: true, statusHistory: true, payments: true },
+        orderBy: { createdAt: 'desc' },
+      });
     }
     if (types.includes('khata')) {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { farmerProfile: true } });
       if (user?.farmerProfile) {
-        result.khata = await prisma.khataAccount.findMany({ where: { farmerId: user.farmerProfile.id }, include: { transactions: { take: 100, orderBy: { createdAt: 'desc' } } } });
-      } else { result.khata = []; }
+        result.khata = await prisma.khataAccount.findMany({
+          where: { farmerId: user.farmerProfile.id },
+          include: { transactions: { take: 100, orderBy: { createdAt: 'desc' } } },
+        });
+      } else {
+        result.khata = [];
+      }
     }
     if (types.includes('reviews')) {
       result.reviews = await prisma.review.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
     }
     if (types.includes('wallet')) {
-      result.wallet = await prisma.wallet.findUnique({ where: { userId }, include: { transactions: { take: 100, orderBy: { createdAt: 'desc' } } } });
+      result.wallet = await prisma.wallet.findUnique({
+        where: { userId },
+        include: { transactions: { take: 100, orderBy: { createdAt: 'desc' } } },
+      });
     }
     return { userId, exportedAt: new Date().toISOString(), data: result };
-  }
+  },
 };

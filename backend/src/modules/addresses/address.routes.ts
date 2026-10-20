@@ -10,11 +10,7 @@ import {
   deleteAddress,
   setDefaultAddress,
 } from './address.controller';
-import {
-  createAddressSchema,
-  updateAddressSchema,
-  addressQuerySchema,
-} from './address.validator';
+import { createAddressSchema, updateAddressSchema, addressQuerySchema } from './address.validator';
 
 const router = Router();
 
@@ -53,11 +49,32 @@ function validateQuery(schema: ReturnType<typeof import('joi').object>) {
 // All address routes require authentication
 router.use(authenticate);
 
-router.post('/', validateBody(createAddressSchema), asyncHandler((req, res) => createAddress(req as AuthRequest, res)));
-router.get('/', validateQuery(addressQuerySchema), asyncHandler((req, res) => listAddresses(req as AuthRequest, res)));
-router.get('/:id', asyncHandler((req, res) => getAddressById(req as AuthRequest, res)));
-router.put('/:id', validateBody(updateAddressSchema), asyncHandler((req, res) => updateAddress(req as AuthRequest, res)));
-router.delete('/:id', asyncHandler((req, res) => deleteAddress(req as AuthRequest, res)));
-router.put('/:id/default', asyncHandler((req, res) => setDefaultAddress(req as AuthRequest, res)));
+router.post(
+  '/',
+  validateBody(createAddressSchema),
+  asyncHandler((req, res) => createAddress(req as AuthRequest, res)),
+);
+router.get(
+  '/',
+  validateQuery(addressQuerySchema),
+  asyncHandler((req, res) => listAddresses(req as AuthRequest, res)),
+);
+router.get(
+  '/:id',
+  asyncHandler((req, res) => getAddressById(req as AuthRequest, res)),
+);
+router.put(
+  '/:id',
+  validateBody(updateAddressSchema),
+  asyncHandler((req, res) => updateAddress(req as AuthRequest, res)),
+);
+router.delete(
+  '/:id',
+  asyncHandler((req, res) => deleteAddress(req as AuthRequest, res)),
+);
+router.put(
+  '/:id/default',
+  asyncHandler((req, res) => setDefaultAddress(req as AuthRequest, res)),
+);
 
 export default router;

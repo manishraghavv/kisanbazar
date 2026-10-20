@@ -1,20 +1,21 @@
 import { prisma } from '../../common/lib/prisma';
-import {
-  NotFoundError,
-} from '../../common/errors';
+import { NotFoundError } from '../../common/errors';
 
 export const AddressService = {
-  async create(userId: string, data: {
-    label?: string;
-    addressLine1: string;
-    addressLine2?: string;
-    village?: string;
-    city: string;
-    district?: string;
-    state: string;
-    pincode: string;
-    isDefault?: boolean;
-  }) {
+  async create(
+    userId: string,
+    data: {
+      label?: string;
+      addressLine1: string;
+      addressLine2?: string;
+      village?: string;
+      city: string;
+      district?: string;
+      state: string;
+      pincode: string;
+      isDefault?: boolean;
+    },
+  ) {
     const { isDefault, ...rest } = data;
 
     if (isDefault) {
@@ -52,17 +53,21 @@ export const AddressService = {
     return address;
   },
 
-  async update(id: string, userId: string, data: {
-    label?: string;
-    addressLine1?: string;
-    addressLine2?: string;
-    village?: string;
-    city?: string;
-    district?: string;
-    state?: string;
-    pincode?: string;
-    isDefault?: boolean;
-  }) {
+  async update(
+    id: string,
+    userId: string,
+    data: {
+      label?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      village?: string;
+      city?: string;
+      district?: string;
+      state?: string;
+      pincode?: string;
+      isDefault?: boolean;
+    },
+  ) {
     const address = await prisma.address.findUnique({ where: { id } });
     if (!address || address.userId !== userId) throw new NotFoundError('Address not found');
 

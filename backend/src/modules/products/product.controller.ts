@@ -115,7 +115,9 @@ export const getCategoryProducts = async (req: AuthRequest, res: Response): Prom
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const product = await ProductService.create(req.user.id, req.body);
-    res.status(201).json({ success: true, message: 'Product created. Submit for moderation when ready.', data: product });
+    res
+      .status(201)
+      .json({ success: true, message: 'Product created. Submit for moderation when ready.', data: product });
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -263,7 +265,11 @@ export const deleteImage = async (req: AuthRequest, res: Response): Promise<void
 
 export const setPrimaryImage = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const image = await ProductService.setPrimaryImage(req.params.imageId as string, req.params.id as string, req.user.id);
+    const image = await ProductService.setPrimaryImage(
+      req.params.imageId as string,
+      req.params.id as string,
+      req.user.id,
+    );
     res.json({ success: true, message: 'Primary image updated', data: image });
   } catch (err) {
     handleServiceError(err, res);

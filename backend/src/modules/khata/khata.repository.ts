@@ -5,7 +5,13 @@ import { BaseRepository } from '../../common/lib/base.repository';
 export class KhataRepository extends BaseRepository {
   // ── Accounts ──────────────────────────────────────────────────────────────
   createAccount(data: any) {
-    return this.prisma.khataAccount.create({ data, include: { vendor: { select: { businessName: true } }, farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } } } });
+    return this.prisma.khataAccount.create({
+      data,
+      include: {
+        vendor: { select: { businessName: true } },
+        farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
+      },
+    });
   }
 
   findAccountById(id: string, include?: any) {
@@ -17,7 +23,16 @@ export class KhataRepository extends BaseRepository {
   }
 
   listAccounts(where: any, skip: number, take: number) {
-    return this.prisma.khataAccount.findMany({ where, skip, take, orderBy: { updatedAt: 'desc' }, include: { vendor: { select: { businessName: true } }, farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } } } });
+    return this.prisma.khataAccount.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        vendor: { select: { businessName: true } },
+        farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
+      },
+    });
   }
 
   countAccounts(where: any) {
@@ -47,7 +62,10 @@ export class KhataRepository extends BaseRepository {
   }
 
   findRequestById(id: string) {
-    return this.prisma.khataRequest.findUnique({ where: { id }, include: { khataAccount: { include: { vendor: { select: { userId: true } } } } } });
+    return this.prisma.khataRequest.findUnique({
+      where: { id },
+      include: { khataAccount: { include: { vendor: { select: { userId: true } } } } },
+    });
   }
 
   findPendingRequest(accountId: string) {
@@ -60,7 +78,10 @@ export class KhataRepository extends BaseRepository {
 
   // ── Statements ────────────────────────────────────────────────────────────
   listStatements(accountId: string) {
-    return this.prisma.khataStatement.findMany({ where: { khataAccountId: accountId }, orderBy: { periodStart: 'desc' } });
+    return this.prisma.khataStatement.findMany({
+      where: { khataAccountId: accountId },
+      orderBy: { periodStart: 'desc' },
+    });
   }
 
   findStatementById(accountId: string, statementId: string) {

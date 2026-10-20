@@ -15,9 +15,7 @@ export const updateKhataAccountSchema = Joi.object({
 }).min(1);
 
 export const addTransactionSchema = Joi.object({
-  type: Joi.string()
-    .valid('UDHAR_DIYA', 'WAPSI_MILI', 'INTEREST_LAGA', 'WAIVER', 'ORDER_LINKED')
-    .required(),
+  type: Joi.string().valid('UDHAR_DIYA', 'WAPSI_MILI', 'INTEREST_LAGA', 'WAIVER', 'ORDER_LINKED').required(),
   amount: Joi.number().positive().required(),
   linkedOrderId: Joi.string().uuid().optional(),
   remarks: Joi.string().max(500).optional(),
@@ -46,9 +44,7 @@ export const getAccountsQuerySchema = Joi.object({
 export const getTransactionsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(20),
-  type: Joi.string()
-    .valid('UDHAR_DIYA', 'WAPSI_MILI', 'INTEREST_LAGA', 'WAIVER', 'ORDER_LINKED')
-    .optional(),
+  type: Joi.string().valid('UDHAR_DIYA', 'WAPSI_MILI', 'INTEREST_LAGA', 'WAIVER', 'ORDER_LINKED').optional(),
 });
 
 export const generateStatementSchema = Joi.object({

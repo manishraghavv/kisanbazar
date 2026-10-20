@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { api, bearer, createCatalogItem, registerAndLogin } from '../helpers';
 
 describe('public endpoints work without a token', () => {
-  it.each(['/api/coupons', '/api/industries', '/api/enterprise-tiers', '/api/products', '/api/categories', '/api/categories/tree'])(
-    'GET %s',
-    async (path) => {
-      const res = await api().get(path);
-      expect(res.status).toBe(200);
-    },
-  );
+  it.each([
+    '/api/coupons',
+    '/api/industries',
+    '/api/enterprise-tiers',
+    '/api/products',
+    '/api/categories',
+    '/api/categories/tree',
+  ])('GET %s', async (path) => {
+    const res = await api().get(path);
+    expect(res.status).toBe(200);
+  });
 
   it('GET /api/products/:id and its reviews are public', async () => {
     const { product } = await createCatalogItem();

@@ -15,9 +15,9 @@ import { dispatch } from '../common/services/notification-dispatch';
 
 const CRON_ENABLED = process.env.CRON_ENABLED !== 'false';
 const INTEREST_CRON_SCHEDULE = process.env.CRON_INTEREST_SCHEDULE || '0 0 * * *'; // Daily midnight
-const OVERDUE_CRON_SCHEDULE = process.env.CRON_OVERDUE_SCHEDULE || '0 1 * * *';   // Daily 1 AM
+const OVERDUE_CRON_SCHEDULE = process.env.CRON_OVERDUE_SCHEDULE || '0 1 * * *'; // Daily 1 AM
 const CART_CLEANUP_SCHEDULE = process.env.CRON_CART_CLEANUP_SCHEDULE || '0 3 * * *'; // Daily 3 AM
-const PRICE_ALERT_SCHEDULE = process.env.CRON_PRICE_ALERT_SCHEDULE || '0 4 * * *';  // Daily 4 AM
+const PRICE_ALERT_SCHEDULE = process.env.CRON_PRICE_ALERT_SCHEDULE || '0 4 * * *'; // Daily 4 AM
 const REPAYMENT_REMINDER_SCHEDULE = process.env.CRON_REPAYMENT_REMINDER_SCHEDULE || '0 8 * * *'; // Daily 8 AM
 const GRACE_PERIOD_DAYS = Number(process.env.INTEREST_GRACE_PERIOD_DAYS) || 0;
 const OVERDUE_ESCALATION_DAYS = Number(process.env.OVERDUE_ESCALATION_DAYS) || 30;
@@ -28,7 +28,10 @@ const REMINDER_DAYS_BEFORE = Number(process.env.REPAYMENT_REMINDER_DAYS_BEFORE) 
 
 // ── Cron Run Log ─────────────────────────────────────────────────────────────
 
-const cronRuns: Record<string, { lastRun: Date | null; lastStatus: string; accountsProcessed?: number; errors?: string }> = {
+const cronRuns: Record<
+  string,
+  { lastRun: Date | null; lastStatus: string; accountsProcessed?: number; errors?: string }
+> = {
   interest: { lastRun: null, lastStatus: 'never' },
   overdue: { lastRun: null, lastStatus: 'never' },
   cartCleanup: { lastRun: null, lastStatus: 'never' },
@@ -366,44 +369,18 @@ export async function runRepaymentReminders(): Promise<{ remindersSent: number; 
 
         // Notify farmer via dispatch (in-app + WebSocket + SMS/email if configured)
         if (isOverdue) {
-          await dispatch.khataOverdueReminder(
-            account.farmer.userId,
-            amountStr,
-            vendorName,
-            dueDateStr,
-          );
+          await dispatch.khataOverdueReminder(account.farmer.userId, amountStr, vendorName, dueDateStr);
         } else if (daysRemaining <= 1) {
-          await dispatch.khataDueTomorrow(
-            account.farmer.userId,
-            amountStr,
-            vendorName,
-            dueDateStr,
-          );
+          await dispatch.khataDueTomorrow(account.farmer.userId, amountStr, vendorName, dueDateStr);
         } else {
-          await dispatch.khataDueSoon(
-            account.farmer.userId,
-            amountStr,
-            vendorName,
-            dueDateStr,
-            String(daysRemaining),
-          );
+          await dispatch.khataDueSoon(account.farmer.userId, amountStr, vendorName, dueDateStr, String(daysRemaining));
         }
 
         // Notify vendor via dispatch
         if (isOverdue) {
-          await dispatch.khataVendorOverdue(
-            account.vendor.userId,
-            farmerName,
-            amountStr,
-            dueDateStr,
-          );
+          await dispatch.khataVendorOverdue(account.vendor.userId, farmerName, amountStr, dueDateStr);
         } else {
-          await dispatch.khataVendorDueSoon(
-            account.vendor.userId,
-            farmerName,
-            amountStr,
-            dueDateStr,
-          );
+          await dispatch.khataVendorDueSoon(account.vendor.userId, farmerName, amountStr, dueDateStr);
         }
 
         remindersSent += 2; // Count farmer + vendor notifications
@@ -514,14 +491,18 @@ export function startCronJobs(): void {
   cron.schedule(INTEREST_CRON_SCHEDULE, async () => {
     console.log('[CRON] Running interest calculation...');
     const result = await runInterestCalculation();
-    console.log(`[CRON] Interest calculation complete: ${result.processed} accounts processed, ${result.errors.length} errors`);
+    console.log(
+      `[CRON] Interest calculation complete: ${result.processed} accounts processed, ${result.errors.length} errors`,
+    );
   });
 
   // B.3 — Overdue Escalation (daily 1 AM)
   cron.schedule(OVERDUE_CRON_SCHEDULE, async () => {
     console.log('[CRON] Running overdue escalation...');
     const result = await runOverdueEscalation();
-    console.log(`[CRON] Overdue escalation: ${result.markedOverdue} marked, ${result.escalated} escalated, ${result.suspended} suspended`);
+    console.log(
+      `[CRON] Overdue escalation: ${result.markedOverdue} marked, ${result.escalated} escalated, ${result.suspended} suspended`,
+    );
   });
 
   // B.4 — Cart Cleanup (daily 3 AM)

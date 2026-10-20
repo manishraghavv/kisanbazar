@@ -3,13 +3,18 @@ import { getAllowedOrigins, corsOriginCheck } from './cors';
 
 const check = (allowed: string[], origin?: string) => {
   let result: boolean | undefined;
-  corsOriginCheck(allowed)(origin, (_err, allow) => { result = allow; });
+  corsOriginCheck(allowed)(origin, (_err, allow) => {
+    result = allow;
+  });
   return result;
 };
 
 describe('getAllowedOrigins', () => {
   it('parses a comma-separated list, trimming spaces and trailing slashes', () => {
-    expect(getAllowedOrigins({ CORS_ORIGIN: 'https://a.in/, https://b.in' } as NodeJS.ProcessEnv)).toEqual(['https://a.in', 'https://b.in']);
+    expect(getAllowedOrigins({ CORS_ORIGIN: 'https://a.in/, https://b.in' } as NodeJS.ProcessEnv)).toEqual([
+      'https://a.in',
+      'https://b.in',
+    ]);
   });
   it('never yields a wildcard', () => {
     expect(getAllowedOrigins({ CORS_ORIGIN: '*', NODE_ENV: 'production' } as NodeJS.ProcessEnv)).toEqual([]);

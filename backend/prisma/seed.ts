@@ -25,7 +25,13 @@ const prisma = new PrismaClient({ adapter: new PrismaPg(pool, { schema: 'public'
 
 const D = (v: string | number) => new Prisma.Decimal(v);
 
-async function upsertUser(phoneNumber: string, fullName: string, role: 'ADMIN' | 'VENDOR' | 'FARMER', password: string, email?: string) {
+async function upsertUser(
+  phoneNumber: string,
+  fullName: string,
+  role: 'ADMIN' | 'VENDOR' | 'FARMER',
+  password: string,
+  email?: string,
+) {
   const passwordHash = await bcrypt.hash(password, 10);
   return prisma.user.upsert({
     where: { phoneNumber },
@@ -48,7 +54,13 @@ async function main() {
   const tier = await prisma.enterpriseTier.upsert({
     where: { name: 'Small' },
     update: {},
-    create: { name: 'Small', size: 'SMALL', defaultCommissionRate: D(8), maxKhataLimit: D(500000), description: 'Seed tier' },
+    create: {
+      name: 'Small',
+      size: 'SMALL',
+      defaultCommissionRate: D(8),
+      maxKhataLimit: D(500000),
+      description: 'Seed tier',
+    },
   });
 
   // ── Vendors ──────────────────────────────────────────────
@@ -87,7 +99,14 @@ async function main() {
     const farmer = await prisma.farmer.upsert({
       where: { userId: user.id },
       update: {},
-      create: { userId: user.id, village: f.village, district: f.district, state: 'Uttar Pradesh', primaryCrops: f.crops, landAreaAcres: D(4.5) },
+      create: {
+        userId: user.id,
+        village: f.village,
+        district: f.district,
+        state: 'Uttar Pradesh',
+        primaryCrops: f.crops,
+        landAreaAcres: D(4.5),
+      },
     });
     await prisma.wallet.upsert({ where: { userId: user.id }, update: {}, create: { userId: user.id } });
     farmers.push(farmer);
@@ -108,18 +127,78 @@ async function main() {
 
   // ── Products + variants ──────────────────────────────────
   const productDefs = [
-    { slug: 'hybrid-wheat-seed', name: 'Hybrid Wheat Seed', nameHi: 'हाइब्रिड गेहूं बीज', cat: 'seeds', v: 0, hsn: '1001', gst: 0, unit: 'kg',
-      variants: [{ sku: 'WHEAT-5KG', name: '5 kg bag', mrp: 450, price: 410, stock: 200 }, { sku: 'WHEAT-20KG', name: '20 kg bag', mrp: 1700, price: 1550, stock: 80 }] },
-    { slug: 'basmati-rice-seed', name: 'Basmati Rice Seed', nameHi: 'बासमती धान बीज', cat: 'seeds', v: 0, hsn: '1006', gst: 0, unit: 'kg',
-      variants: [{ sku: 'RICE-2KG', name: '2 kg pack', mrp: 380, price: 350, stock: 150 }] },
-    { slug: 'urea-46', name: 'Urea 46% N', nameHi: 'यूरिया', cat: 'fertilizers', v: 1, hsn: '3102', gst: 5, unit: 'bag',
-      variants: [{ sku: 'UREA-45KG', name: '45 kg bag', mrp: 270, price: 266, stock: 500 }] },
-    { slug: 'dap-fertilizer', name: 'DAP Fertilizer', nameHi: 'डीएपी खाद', cat: 'fertilizers', v: 1, hsn: '3105', gst: 5, unit: 'bag',
-      variants: [{ sku: 'DAP-50KG', name: '50 kg bag', mrp: 1350, price: 1300, stock: 300 }] },
-    { slug: 'neem-pesticide', name: 'Neem Oil Pesticide', nameHi: 'नीम तेल कीटनाशक', cat: 'pesticides', v: 0, hsn: '3808', gst: 18, unit: 'L',
-      variants: [{ sku: 'NEEM-1L', name: '1 L', mrp: 520, price: 480, stock: 120 }, { sku: 'NEEM-5L', name: '5 L', mrp: 2400, price: 2200, stock: 40 }] },
-    { slug: 'hand-sprayer', name: 'Hand Sprayer 16L', nameHi: 'हैंड स्प्रेयर', cat: 'tools', v: 1, hsn: '8424', gst: 18, unit: 'piece',
-      variants: [{ sku: 'SPRAYER-16L', name: '16 L knapsack', mrp: 1800, price: 1650, stock: 60 }] },
+    {
+      slug: 'hybrid-wheat-seed',
+      name: 'Hybrid Wheat Seed',
+      nameHi: 'हाइब्रिड गेहूं बीज',
+      cat: 'seeds',
+      v: 0,
+      hsn: '1001',
+      gst: 0,
+      unit: 'kg',
+      variants: [
+        { sku: 'WHEAT-5KG', name: '5 kg bag', mrp: 450, price: 410, stock: 200 },
+        { sku: 'WHEAT-20KG', name: '20 kg bag', mrp: 1700, price: 1550, stock: 80 },
+      ],
+    },
+    {
+      slug: 'basmati-rice-seed',
+      name: 'Basmati Rice Seed',
+      nameHi: 'बासमती धान बीज',
+      cat: 'seeds',
+      v: 0,
+      hsn: '1006',
+      gst: 0,
+      unit: 'kg',
+      variants: [{ sku: 'RICE-2KG', name: '2 kg pack', mrp: 380, price: 350, stock: 150 }],
+    },
+    {
+      slug: 'urea-46',
+      name: 'Urea 46% N',
+      nameHi: 'यूरिया',
+      cat: 'fertilizers',
+      v: 1,
+      hsn: '3102',
+      gst: 5,
+      unit: 'bag',
+      variants: [{ sku: 'UREA-45KG', name: '45 kg bag', mrp: 270, price: 266, stock: 500 }],
+    },
+    {
+      slug: 'dap-fertilizer',
+      name: 'DAP Fertilizer',
+      nameHi: 'डीएपी खाद',
+      cat: 'fertilizers',
+      v: 1,
+      hsn: '3105',
+      gst: 5,
+      unit: 'bag',
+      variants: [{ sku: 'DAP-50KG', name: '50 kg bag', mrp: 1350, price: 1300, stock: 300 }],
+    },
+    {
+      slug: 'neem-pesticide',
+      name: 'Neem Oil Pesticide',
+      nameHi: 'नीम तेल कीटनाशक',
+      cat: 'pesticides',
+      v: 0,
+      hsn: '3808',
+      gst: 18,
+      unit: 'L',
+      variants: [
+        { sku: 'NEEM-1L', name: '1 L', mrp: 520, price: 480, stock: 120 },
+        { sku: 'NEEM-5L', name: '5 L', mrp: 2400, price: 2200, stock: 40 },
+      ],
+    },
+    {
+      slug: 'hand-sprayer',
+      name: 'Hand Sprayer 16L',
+      nameHi: 'हैंड स्प्रेयर',
+      cat: 'tools',
+      v: 1,
+      hsn: '8424',
+      gst: 18,
+      unit: 'piece',
+      variants: [{ sku: 'SPRAYER-16L', name: '16 L knapsack', mrp: 1800, price: 1650, stock: 60 }],
+    },
   ];
   for (const p of productDefs) {
     const product = await prisma.product.upsert({
@@ -143,7 +222,15 @@ async function main() {
       await prisma.productVariant.upsert({
         where: { sku: v.sku },
         update: {},
-        create: { productId: product.id, sku: v.sku, variantName: v.name, mrp: D(v.mrp), sellingPrice: D(v.price), stockQuantity: v.stock, reorderThreshold: 10 },
+        create: {
+          productId: product.id,
+          sku: v.sku,
+          variantName: v.name,
+          mrp: D(v.mrp),
+          sellingPrice: D(v.price),
+          stockQuantity: v.stock,
+          reorderThreshold: 10,
+        },
       });
     }
   }
@@ -152,18 +239,46 @@ async function main() {
   const now = new Date();
   const inOneYear = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   const couponDefs = [
-    { code: 'WELCOME10', title: '10% off your first order', type: 'PERCENTAGE' as const, value: 10, minimumAmount: 500, maximumDiscount: 200, usageLimit: 1000 },
-    { code: 'FLAT100', title: '₹100 off on orders above ₹1000', type: 'FIXED' as const, value: 100, minimumAmount: 1000, usageLimit: 500 },
-    { code: 'FREESHIP', title: 'Free delivery', type: 'FREE_DELIVERY' as const, value: 0, minimumAmount: 300, usageLimit: null },
+    {
+      code: 'WELCOME10',
+      title: '10% off your first order',
+      type: 'PERCENTAGE' as const,
+      value: 10,
+      minimumAmount: 500,
+      maximumDiscount: 200,
+      usageLimit: 1000,
+    },
+    {
+      code: 'FLAT100',
+      title: '₹100 off on orders above ₹1000',
+      type: 'FIXED' as const,
+      value: 100,
+      minimumAmount: 1000,
+      usageLimit: 500,
+    },
+    {
+      code: 'FREESHIP',
+      title: 'Free delivery',
+      type: 'FREE_DELIVERY' as const,
+      value: 0,
+      minimumAmount: 300,
+      usageLimit: null,
+    },
   ];
   for (const c of couponDefs) {
     await prisma.coupon.upsert({
       where: { code: c.code },
       update: {},
       create: {
-        code: c.code, title: c.title, type: c.type, value: D(c.value),
-        minimumAmount: D(c.minimumAmount), maximumDiscount: c.maximumDiscount ? D(c.maximumDiscount) : null,
-        usageLimit: c.usageLimit, startsAt: now, expiresAt: inOneYear,
+        code: c.code,
+        title: c.title,
+        type: c.type,
+        value: D(c.value),
+        minimumAmount: D(c.minimumAmount),
+        maximumDiscount: c.maximumDiscount ? D(c.maximumDiscount) : null,
+        usageLimit: c.usageLimit,
+        startsAt: now,
+        expiresAt: inOneYear,
       },
     });
   }
@@ -178,12 +293,22 @@ async function main() {
     await prisma.khataAccount.upsert({
       where: { vendorId_farmerId: { vendorId: vendors[k.vendor].id, farmerId: farmers[k.farmer].id } },
       update: {},
-      create: { vendorId: vendors[k.vendor].id, farmerId: farmers[k.farmer].id, creditLimitAmount: D(k.limit), interestRatePct: D(k.interest), creditPeriodDays: 30 },
+      create: {
+        vendorId: vendors[k.vendor].id,
+        farmerId: farmers[k.farmer].id,
+        creditLimitAmount: D(k.limit),
+        interestRatePct: D(k.interest),
+        creditPeriodDays: 30,
+      },
     });
   }
 
-  console.log('[seed] done. Dev logins (phone / password): admin 9000000001, vendors 9000000011-12, farmers 9000000021-23');
-  console.log(`[seed] password: ${process.env.SEED_PASSWORD || process.env.SEED_ADMIN_PASSWORD ? '(from SEED_* env)' : DEV_DEFAULT_PASSWORD}`);
+  console.log(
+    '[seed] done. Dev logins (phone / password): admin 9000000001, vendors 9000000011-12, farmers 9000000021-23',
+  );
+  console.log(
+    `[seed] password: ${process.env.SEED_PASSWORD || process.env.SEED_ADMIN_PASSWORD ? '(from SEED_* env)' : DEV_DEFAULT_PASSWORD}`,
+  );
 }
 
 main()

@@ -41,11 +41,7 @@ export const getAccounts = async (req: AuthRequest, res: Response): Promise<void
 
 export const getAccountById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const account = await KhataService.getAccountById(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const account = await KhataService.getAccountById(req.params.id as string, req.user.id, req.user.role);
     res.json({ success: true, data: account });
   } catch (err) {
     handleServiceError(err, res);
@@ -54,12 +50,7 @@ export const getAccountById = async (req: AuthRequest, res: Response): Promise<v
 
 export const updateAccount = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const account = await KhataService.updateAccount(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      req.body,
-    );
+    const account = await KhataService.updateAccount(req.params.id as string, req.user.id, req.user.role, req.body);
     res.json({ success: true, message: 'Khata account updated', data: account });
   } catch (err) {
     handleServiceError(err, res);
@@ -70,19 +61,14 @@ export const updateAccount = async (req: AuthRequest, res: Response): Promise<vo
 
 export const addTransaction = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const transaction = await KhataService.addTransaction(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      {
-        type: req.body.type as KhataTransactionType,
-        amount: req.body.amount,
-        linkedOrderId: req.body.linkedOrderId,
-        remarks: req.body.remarks,
-        proofImageUrl: req.body.proofImageUrl,
-        upiTransactionId: req.body.upiTransactionId,
-      },
-    );
+    const transaction = await KhataService.addTransaction(req.params.id as string, req.user.id, req.user.role, {
+      type: req.body.type as KhataTransactionType,
+      amount: req.body.amount,
+      linkedOrderId: req.body.linkedOrderId,
+      remarks: req.body.remarks,
+      proofImageUrl: req.body.proofImageUrl,
+      upiTransactionId: req.body.upiTransactionId,
+    });
     res.status(201).json({ success: true, message: 'Transaction recorded', data: transaction });
   } catch (err) {
     handleServiceError(err, res);
@@ -91,16 +77,11 @@ export const addTransaction = async (req: AuthRequest, res: Response): Promise<v
 
 export const getTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await KhataService.getTransactions(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      {
-        page: Number(req.query.page) || 1,
-        limit: Number(req.query.limit) || 20,
-        type: req.query.type as KhataTransactionType | undefined,
-      },
-    );
+    const result = await KhataService.getTransactions(req.params.id as string, req.user.id, req.user.role, {
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 20,
+      type: req.query.type as KhataTransactionType | undefined,
+    });
     res.json({ success: true, data: result });
   } catch (err) {
     handleServiceError(err, res);
@@ -111,15 +92,10 @@ export const getTransactions = async (req: AuthRequest, res: Response): Promise<
 
 export const getRequests = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await KhataService.getRequests(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      {
-        page: Number(req.query.page) || 1,
-        limit: Number(req.query.limit) || 20,
-      },
-    );
+    const result = await KhataService.getRequests(req.params.id as string, req.user.id, req.user.role, {
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 20,
+    });
     res.json({ success: true, data: result });
   } catch (err) {
     handleServiceError(err, res);
@@ -140,12 +116,10 @@ export const createRequest = async (req: AuthRequest, res: Response): Promise<vo
 
 export const reviewRequest = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await KhataService.reviewRequest(
-      req.params.requestId as string,
-      req.user.id,
-      req.user.role,
-      { status: req.body.status, reviewNote: req.body.reviewNote },
-    );
+    const result = await KhataService.reviewRequest(req.params.requestId as string, req.user.id, req.user.role, {
+      status: req.body.status,
+      reviewNote: req.body.reviewNote,
+    });
     res.json({ success: true, ...result });
   } catch (err) {
     handleServiceError(err, res);
@@ -156,11 +130,7 @@ export const reviewRequest = async (req: AuthRequest, res: Response): Promise<vo
 
 export const getStatements = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const statements = await KhataService.getStatements(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const statements = await KhataService.getStatements(req.params.id as string, req.user.id, req.user.role);
     res.json({ success: true, data: statements });
   } catch (err) {
     handleServiceError(err, res);
@@ -183,15 +153,10 @@ export const getStatementById = async (req: AuthRequest, res: Response): Promise
 
 export const generateStatement = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await KhataService.generateStatement(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-      {
-        periodStart: new Date(req.body.periodStart),
-        periodEnd: new Date(req.body.periodEnd),
-      },
-    );
+    const result = await KhataService.generateStatement(req.params.id as string, req.user.id, req.user.role, {
+      periodStart: new Date(req.body.periodStart),
+      periodEnd: new Date(req.body.periodEnd),
+    });
     res.status(201).json({ success: true, message: 'Statement generated', data: result });
   } catch (err) {
     handleServiceError(err, res);
@@ -241,11 +206,7 @@ export const getOverdueAccounts = async (req: AuthRequest, res: Response): Promi
 
 export const generateStatementPdf = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = await KhataService.getStatementPdfData(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const data = await KhataService.getStatementPdfData(req.params.id as string, req.user.id, req.user.role);
 
     const doc = new PDFDocument({ margin: 50 });
 
@@ -256,7 +217,10 @@ export const generateStatementPdf = async (req: AuthRequest, res: Response): Pro
     // Header
     doc.fontSize(20).font('Helvetica-Bold').text('Khata Statement', { align: 'center' });
     doc.moveDown(0.5);
-    doc.fontSize(10).font('Helvetica').fillColor('#666')
+    doc
+      .fontSize(10)
+      .font('Helvetica')
+      .fillColor('#666')
       .text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, { align: 'center' });
     doc.moveDown(1);
 
@@ -306,7 +270,10 @@ export const generateStatementPdf = async (req: AuthRequest, res: Response): Pro
     }
 
     doc.moveDown(1);
-    doc.fontSize(8).font('Helvetica').fillColor('#999')
+    doc
+      .fontSize(8)
+      .font('Helvetica')
+      .fillColor('#999')
       .text('This is a computer-generated statement. No signature required.', { align: 'center' });
 
     doc.end();

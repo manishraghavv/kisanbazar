@@ -58,7 +58,8 @@ const schema = Joi.object({
     .default('15m')
     .custom((value: string, helpers) => {
       const seconds = durationToSeconds(value);
-      if (Number.isNaN(seconds) || seconds <= 0 || seconds > MAX_ACCESS_TTL_SECONDS) return helpers.error('any.invalid');
+      if (Number.isNaN(seconds) || seconds <= 0 || seconds > MAX_ACCESS_TTL_SECONDS)
+        return helpers.error('any.invalid');
       return value;
     }, 'access ttl')
     .messages({ 'any.invalid': 'JWT_ACCESS_EXPIRES_IN must be a duration like "15m" and at most 15 minutes' }),
@@ -70,7 +71,10 @@ const schema = Joi.object({
     then: Joi.string()
       .required()
       .custom((value: string, helpers) => {
-        const origins = value.split(',').map((s) => s.trim()).filter(Boolean);
+        const origins = value
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (origins.length === 0 || origins.includes('*')) return helpers.error('any.invalid');
         return value;
       }, 'cors allow-list')

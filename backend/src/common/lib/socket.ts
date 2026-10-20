@@ -115,7 +115,10 @@ export const socketEmitter = {
   /**
    * Emit a new notification to a specific user
    */
-  notification(userId: string, notification: { id: string; title: string; message: string; type?: string; createdAt: Date }) {
+  notification(
+    userId: string,
+    notification: { id: string; title: string; message: string; type?: string; createdAt: Date },
+  ) {
     io?.to(`user:${userId}`).emit('notification:new', notification);
   },
 

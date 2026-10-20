@@ -27,7 +27,9 @@ export const bearer = (user: Pick<TestUser, 'accessToken'>) => ({ Authorization:
 export async function registerAndLogin(role: 'FARMER' | 'VENDOR' = 'FARMER'): Promise<TestUser> {
   const phoneNumber = uniquePhone();
   const password = 'Test@12345';
-  const reg = await api().post('/api/auth/register').send({ fullName: `Test ${role}`, phoneNumber, password, role });
+  const reg = await api()
+    .post('/api/auth/register')
+    .send({ fullName: `Test ${role}`, phoneNumber, password, role });
   if (reg.status >= 300) throw new Error(`register failed: ${reg.status} ${JSON.stringify(reg.body)}`);
   const login = await api().post('/api/auth/login').send({ phoneNumber, password });
   if (login.status !== 200) throw new Error(`login failed: ${login.status} ${JSON.stringify(login.body)}`);
@@ -39,7 +41,13 @@ export async function createAdminAndLogin(): Promise<TestUser> {
   const phoneNumber = uniquePhone();
   const password = 'Test@12345';
   const user = await prisma.user.create({
-    data: { fullName: 'Test Admin', phoneNumber, passwordHash: await hashPassword(password), role: 'ADMIN', isPhoneVerified: true },
+    data: {
+      fullName: 'Test Admin',
+      phoneNumber,
+      passwordHash: await hashPassword(password),
+      role: 'ADMIN',
+      isPhoneVerified: true,
+    },
   });
   const login = await api().post('/api/auth/login').send({ phoneNumber, password });
   return { id: user.id, phoneNumber, password, accessToken: login.body.data.accessToken };

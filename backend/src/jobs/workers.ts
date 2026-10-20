@@ -22,7 +22,7 @@ async function testRedisConnection(): Promise<boolean> {
   // Try to connect and ping Redis. If it fails, workers stay disabled.
   const testClient = new Redis(REDIS_URL_PROCESS, {
     maxRetriesPerRequest: 1,
-    retryStrategy: () => null,     // Don't retry — just test once
+    retryStrategy: () => null, // Don't retry — just test once
     lazyConnect: true,
     connectTimeout: 3000,
   });
@@ -37,23 +37,27 @@ async function testRedisConnection(): Promise<boolean> {
     console.warn('[WORKERS] Redis is not reachable — queue workers will be disabled');
     return false;
   } finally {
-    try { await testClient.quit(); } catch { /* ignore */ }
+    try {
+      await testClient.quit();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 // ── Worker Factory — wraps creation in try/catch ─────────────────────────────
 
-function createWorker(queueName: string, processor: (job: Job) => Promise<unknown>, opts?: Record<string, unknown>): Worker | null {
+function createWorker(
+  queueName: string,
+  processor: (job: Job) => Promise<unknown>,
+  opts?: Record<string, unknown>,
+): Worker | null {
   if (!redisAvailable) return null;
   try {
-    const worker = new Worker(
-      `${QUEUE_PREFIX}_${queueName}`,
-      processor,
-      {
-        connection: { url: REDIS_URL_PROCESS! },
-        ...opts,
-      } as any,
-    );
+    const worker = new Worker(`${QUEUE_PREFIX}_${queueName}`, processor, {
+      connection: { url: REDIS_URL_PROCESS! },
+      ...opts,
+    } as any);
 
     worker.on('completed', (job: Job) => {
       console.log(`[WORKER] Job ${queueName}#${job.id} completed`);
@@ -93,28 +97,40 @@ export async function startWorkers(): Promise<void> {
   console.log('[WORKERS] Starting queue workers...');
 
   workers = [
-    createWorker('email', async (job: Job) => {
-      const { to, subject } = job.data;
-      console.log(`[WORKER] Sending email to ${to}: ${subject}`);
-      console.log(`[WORKER] Email sent to ${to} — Subject: ${subject}`);
-      return { sent: true, to, subject };
-    }, { concurrency: 5 }),
+    createWorker(
+      'email',
+      async (job: Job) => {
+        const { to, subject } = job.data;
+        console.log(`[WORKER] Sending email to ${to}: ${subject}`);
+        console.log(`[WORKER] Email sent to ${to} — Subject: ${subject}`);
+        return { sent: true, to, subject };
+      },
+      { concurrency: 5 },
+    ),
 
-    createWorker('sms', async (job: Job) => {
-      const { to, message } = job.data;
-      console.log(`[WORKER] Sending SMS to ${to}: ${message}`);
-      console.log(`[WORKER] SMS sent to ${to} — Message: ${message}`);
-      return { sent: true, to };
-    }, { concurrency: 10 }),
+    createWorker(
+      'sms',
+      async (job: Job) => {
+        const { to, message } = job.data;
+        console.log(`[WORKER] Sending SMS to ${to}: ${message}`);
+        console.log(`[WORKER] SMS sent to ${to} — Message: ${message}`);
+        return { sent: true, to };
+      },
+      { concurrency: 10 },
+    ),
 
-    createWorker('push', async (job: Job) => {
-      const { userId, title, body } = job.data;
-      await prisma.notification.create({
-        data: { userId, title, message: body, type: 'SYSTEM' },
-      });
-      console.log(`[WORKER] Push notification sent to user ${userId}: ${title}`);
-      return { sent: true, userId, title };
-    }, { concurrency: 10 }),
+    createWorker(
+      'push',
+      async (job: Job) => {
+        const { userId, title, body } = job.data;
+        await prisma.notification.create({
+          data: { userId, title, message: body, type: 'SYSTEM' },
+        });
+        console.log(`[WORKER] Push notification sent to user ${userId}: ${title}`);
+        return { sent: true, userId, title };
+      },
+      { concurrency: 10 },
+    ),
 
     createWorker('interest', async (_job: Job) => {
       const { runInterestCalculation } = await import('./cron');
@@ -157,7 +173,11 @@ export async function startWorkers(): Promise<void> {
 
 export async function stopWorkers(): Promise<void> {
   for (const worker of workers) {
-    try { await worker.close(); } catch { /* ignore */ }
+    try {
+      await worker.close();
+    } catch {
+      /* ignore */
+    }
   }
   workers = [];
   console.log('[WORKERS] All queue workers stopped');

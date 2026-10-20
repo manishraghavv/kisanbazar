@@ -72,9 +72,7 @@ export const getProductsQuerySchema = Joi.object({
   search: Joi.string().optional(),
   categoryId: Joi.string().uuid().optional(),
   vendorId: Joi.string().uuid().optional(),
-  status: Joi.string()
-    .valid('DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'DISCONTINUED')
-    .optional(),
+  status: Joi.string().valid('DRAFT', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'DISCONTINUED').optional(),
   minPrice: Joi.number().min(0).optional(),
   maxPrice: Joi.number().min(0).optional(),
   seasonalFlag: Joi.boolean().optional(),
@@ -142,9 +140,7 @@ export const adjustInventorySchema = Joi.object({
   quantityChange: Joi.number().integer().required().messages({
     'number.base': 'quantityChange is required. Use positive for restock, negative for sale/adjustment.',
   }),
-  reason: Joi.string()
-    .valid('SALE', 'RESTOCK', 'RETURN', 'ADJUSTMENT', 'DAMAGED')
-    .required(),
+  reason: Joi.string().valid('SALE', 'RESTOCK', 'RETURN', 'ADJUSTMENT', 'DAMAGED').required(),
   referenceId: Joi.string().uuid().optional(),
   performedById: Joi.string().uuid().optional(),
 });

@@ -10,7 +10,10 @@ export default tseslint.config(
   {
     languageOptions: { globals: { ...globals.node } },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
+      ],
       // ~180 legacy `any`s in services/repositories; tracked as tech debt rather than failing/spamming lint.
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',

@@ -59,9 +59,7 @@ class MemoryCache implements CacheAdapter {
 
   async delPattern(pattern: string): Promise<void> {
     // Convert glob-style pattern to regex
-    const regex = new RegExp(
-      '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
-    );
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
     for (const key of this.store.keys()) {
       if (regex.test(key)) {
         this.store.delete(key);
@@ -94,7 +92,11 @@ async function getRedisAdapter(): Promise<CacheAdapter | null> {
       async get(key: string): Promise<CacheValue | undefined> {
         const val = await client.get(key);
         if (val === null) return undefined;
-        try { return JSON.parse(val); } catch { return val as CacheValue | undefined; }
+        try {
+          return JSON.parse(val);
+        } catch {
+          return val as CacheValue | undefined;
+        }
       },
       async set(key: string, value: CacheValue, ttlSeconds: number): Promise<void> {
         const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -174,11 +176,7 @@ export const cache = {
    * @param fetcher - Async function to compute the value if cache miss
    * @param ttlSeconds - Time-to-live in seconds (default: 5 min)
    */
-  async getOrSet<T extends CacheValue>(
-    key: string,
-    fetcher: () => Promise<T>,
-    ttlSeconds: number = 300,
-  ): Promise<T> {
+  async getOrSet<T extends CacheValue>(key: string, fetcher: () => Promise<T>, ttlSeconds: number = 300): Promise<T> {
     const cached = await this.get(key);
     if (cached !== undefined) return cached as T;
 
@@ -200,8 +198,8 @@ export const cache = {
 };
 
 export const CACHE_TTL = {
-  SHORT: 60,        // 1 minute
-  MEDIUM: 300,      // 5 minutes
-  LONG: 1800,       // 30 minutes
-  DAY: 86400,       // 24 hours
+  SHORT: 60, // 1 minute
+  MEDIUM: 300, // 5 minutes
+  LONG: 1800, // 30 minutes
+  DAY: 86400, // 24 hours
 };

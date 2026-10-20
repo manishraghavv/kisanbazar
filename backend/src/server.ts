@@ -58,7 +58,11 @@ app.use(cors({ origin: corsOriginCheck() }));
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 // Gateway webhook needs the raw bytes for HMAC verification, so it is mounted with
 // express.raw() BEFORE the JSON body parser and before any auth-guarded router.
-app.post('/api/payments/webhook/:gateway', express.raw({ type: '*/*', limit: '1mb' }), asyncHandler(handlePaymentWebhook));
+app.post(
+  '/api/payments/webhook/:gateway',
+  express.raw({ type: '*/*', limit: '1mb' }),
+  asyncHandler(handlePaymentWebhook),
+);
 
 // Global per-IP ceiling for the API (the webhook above is HMAC-protected and exempt).
 app.use('/api', generalLimiter);
@@ -90,8 +94,6 @@ app.use('/api', invoiceRouter);
 app.use('/api', uploadRoutes);
 app.use('/api', bulkImportRoutes);
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
-
 
 // B.8 — Auto-apply best coupon
 app.post('/api/coupons/auto-apply', (req, res, next) => {

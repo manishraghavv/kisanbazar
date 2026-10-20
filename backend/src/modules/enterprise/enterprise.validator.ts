@@ -28,9 +28,7 @@ export const listIndustriesQuerySchema = Joi.object({
 
 export const createTierSchema = Joi.object({
   name: Joi.string().max(200).required(),
-  size: Joi.string()
-    .valid('MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE')
-    .required(),
+  size: Joi.string().valid('MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE').required(),
   minAnnualRevenue: Joi.number().min(0).optional(),
   maxAnnualRevenue: Joi.number().min(0).optional(),
   defaultCommissionRate: Joi.number().min(0).max(100).optional(),
@@ -40,9 +38,7 @@ export const createTierSchema = Joi.object({
 
 export const updateTierSchema = Joi.object({
   name: Joi.string().max(200).optional(),
-  size: Joi.string()
-    .valid('MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE')
-    .optional(),
+  size: Joi.string().valid('MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'ENTERPRISE').optional(),
   minAnnualRevenue: Joi.number().min(0).optional().allow(null),
   maxAnnualRevenue: Joi.number().min(0).optional().allow(null),
   defaultCommissionRate: Joi.number().min(0).max(100).optional().allow(null),

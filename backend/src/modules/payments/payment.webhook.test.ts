@@ -15,17 +15,31 @@ const capturedEvent = () =>
   Buffer.from(
     JSON.stringify({
       event: 'payment.captured',
-      payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1', amount: 50000, currency: 'INR', notes: { paymentId: 'p-1' } } } },
+      payload: {
+        payment: {
+          entity: { id: 'pay_1', order_id: 'order_1', amount: 50000, currency: 'INR', notes: { paymentId: 'p-1' } },
+        },
+      },
     }),
   );
 
 function call(opts: { gateway?: string; body?: unknown; signature?: string }) {
-  const req = { params: { gateway: opts.gateway ?? 'razorpay' }, body: opts.body, headers: { 'x-razorpay-signature': opts.signature } } as any;
+  const req = {
+    params: { gateway: opts.gateway ?? 'razorpay' },
+    body: opts.body,
+    headers: { 'x-razorpay-signature': opts.signature },
+  } as any;
   const res = {
     statusCode: 200,
     payload: undefined as any,
-    status(c: number) { this.statusCode = c; return this; },
-    json(p: unknown) { this.payload = p; return this; },
+    status(c: number) {
+      this.statusCode = c;
+      return this;
+    },
+    json(p: unknown) {
+      this.payload = p;
+      return this;
+    },
   };
   return handlePaymentWebhook(req, res as any).then(() => res);
 }
@@ -34,7 +48,8 @@ describe('verifyRazorpaySignature', () => {
   const body = Buffer.from('{"a":1}');
   it('accepts a valid signature', () => expect(verifyRazorpaySignature(body, sign(body), SECRET)).toBe(true));
   it('rejects a wrong secret', () => expect(verifyRazorpaySignature(body, sign(body, 'other'), SECRET)).toBe(false));
-  it('rejects a tampered body', () => expect(verifyRazorpaySignature(Buffer.from('{"a":2}'), sign(body), SECRET)).toBe(false));
+  it('rejects a tampered body', () =>
+    expect(verifyRazorpaySignature(Buffer.from('{"a":2}'), sign(body), SECRET)).toBe(false));
   it('rejects missing signature, empty body and length mismatch', () => {
     expect(verifyRazorpaySignature(body, undefined, SECRET)).toBe(false);
     expect(verifyRazorpaySignature(Buffer.alloc(0), sign(Buffer.alloc(0)), SECRET)).toBe(false);
@@ -79,7 +94,13 @@ describe('handlePaymentWebhook', () => {
     const res = await call({ body, signature: sign(body) });
     expect(res.statusCode).toBe(200);
     expect(PaymentService.confirmCapturedPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentId: 'p-1', gatewayOrderId: 'order_1', gatewayPaymentId: 'pay_1', amountPaise: 50000, currency: 'INR' }),
+      expect.objectContaining({
+        paymentId: 'p-1',
+        gatewayOrderId: 'order_1',
+        gatewayPaymentId: 'pay_1',
+        amountPaise: 50000,
+        currency: 'INR',
+      }),
     );
   });
 

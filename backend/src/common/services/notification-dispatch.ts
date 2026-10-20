@@ -34,14 +34,24 @@ const TEMPLATES: Record<string, { title: string; message: string }> = {
   ORDER_CANCELLED: { title: 'Order Cancelled', message: 'Your order {{orderNumber}} has been cancelled.' },
 
   // Khata
-  KHATA_TRANSACTION: { title: 'Khata Update', message: 'A transaction of ₹{{amount}} has been recorded in your khata.' },
-  KHATA_OVERDUE: { title: '⚠️ Khata Overdue', message: 'Your khata of ₹{{amount}} is overdue. Please pay by {{dueDate}}.' },
-  KHATA_LIMIT_INCREASED: { title: 'Khata Limit Increased', message: 'Your khata limit has been increased to ₹{{newLimit}}.' },
+  KHATA_TRANSACTION: {
+    title: 'Khata Update',
+    message: 'A transaction of ₹{{amount}} has been recorded in your khata.',
+  },
+  KHATA_OVERDUE: {
+    title: '⚠️ Khata Overdue',
+    message: 'Your khata of ₹{{amount}} is overdue. Please pay by {{dueDate}}.',
+  },
+  KHATA_LIMIT_INCREASED: {
+    title: 'Khata Limit Increased',
+    message: 'Your khata limit has been increased to ₹{{newLimit}}.',
+  },
 
   // Repayment Reminders (farmer-facing)
   KHATA_DUE_SOON: {
     title: '📋 Khata Due Soon',
-    message: 'Your khata of ₹{{amount}} with {{vendorName}} is due on {{dueDate}} ({{daysRemaining}} day(s) remaining).',
+    message:
+      'Your khata of ₹{{amount}} with {{vendorName}} is due on {{dueDate}} ({{daysRemaining}} day(s) remaining).',
   },
   KHATA_DUE_TOMORROW: {
     title: '⚠️ Khata Due Tomorrow',
@@ -49,7 +59,8 @@ const TEMPLATES: Record<string, { title: string; message: string }> = {
   },
   KHATA_OVERDUE_REMINDER: {
     title: '🔴 Khata Overdue Reminder',
-    message: 'Your khata of ₹{{amount}} with {{vendorName}} is overdue since {{dueDate}}. Please pay immediately to avoid suspension.',
+    message:
+      'Your khata of ₹{{amount}} with {{vendorName}} is overdue since {{dueDate}}. Please pay immediately to avoid suspension.',
   },
 
   // Vendor-facing khata reminders
@@ -64,7 +75,10 @@ const TEMPLATES: Record<string, { title: string; message: string }> = {
 
   // Wallet
   WALLET_CREDIT: { title: 'Money Added', message: '₹{{amount}} has been added to your wallet.' },
-  WALLET_DEBIT: { title: 'Payment Made', message: '₹{{amount}} has been deducted from your wallet for order {{reference}}.' },
+  WALLET_DEBIT: {
+    title: 'Payment Made',
+    message: '₹{{amount}} has been deducted from your wallet for order {{reference}}.',
+  },
 
   // System
   SYSTEM_ALERT: { title: 'System Alert', message: '{{message}}' },

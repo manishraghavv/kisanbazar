@@ -17,9 +17,15 @@ export class AuthRepository extends BaseRepository {
   }
 
   createUser(data: {
-    fullName: string; phoneNumber: string; email?: string;
-    passwordHash: string; role: string; referralCode: string;
-    referredById?: string; languagePref: string; deviceType?: string;
+    fullName: string;
+    phoneNumber: string;
+    email?: string;
+    passwordHash: string;
+    role: string;
+    referralCode: string;
+    referredById?: string;
+    languagePref: string;
+    deviceType?: string;
   }) {
     return this.prisma.user.create({ data: data as any });
   }
@@ -45,10 +51,7 @@ export class AuthRepository extends BaseRepository {
     });
   }
 
-  createOtp(data: {
-    userId: string; phoneNumber: string; otpHash: string;
-    expiresAt: Date; ipAddress?: string;
-  }) {
+  createOtp(data: { userId: string; phoneNumber: string; otpHash: string; expiresAt: Date; ipAddress?: string }) {
     return this.prisma.otpVerification.create({ data });
   }
 
@@ -65,8 +68,12 @@ export class AuthRepository extends BaseRepository {
 
   // ── Session ───────────────────────────────────────────────────────────────
   createSession(data: {
-    userId: string; refreshToken: string; deviceType?: string;
-    ipAddress?: string; userAgent?: string; expiresAt: Date;
+    userId: string;
+    refreshToken: string;
+    deviceType?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    expiresAt: Date;
   }) {
     return this.prisma.session.create({ data });
   }

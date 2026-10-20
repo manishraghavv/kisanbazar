@@ -5,10 +5,20 @@ const ACCESS = 'a'.repeat(8) + 'Kx9$mQ2vLp7#zT4wRb6&nY1cHd5@jF3s';
 const REFRESH = 'Zq8!rW5eT2yU7iO1pA4sD6fG9hJ3kL0xCvBnMzXcVb';
 
 const base = (over: Record<string, string | undefined> = {}) =>
-  ({ DATABASE_URL: 'postgresql://u:p@localhost:5432/db', JWT_ACCESS_SECRET: ACCESS, JWT_REFRESH_SECRET: REFRESH, ...over }) as NodeJS.ProcessEnv;
+  ({
+    DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+    JWT_ACCESS_SECRET: ACCESS,
+    JWT_REFRESH_SECRET: REFRESH,
+    ...over,
+  }) as NodeJS.ProcessEnv;
 
 const prod = (over: Record<string, string | undefined> = {}) =>
-  base({ NODE_ENV: 'production', CORS_ORIGIN: 'https://shop.example.in', RAZORPAY_WEBHOOK_SECRET: 'whsec_0123456789abcdef', ...over });
+  base({
+    NODE_ENV: 'production',
+    CORS_ORIGIN: 'https://shop.example.in',
+    RAZORPAY_WEBHOOK_SECRET: 'whsec_0123456789abcdef',
+    ...over,
+  });
 
 const problems = (env: NodeJS.ProcessEnv) => {
   try {
@@ -35,7 +45,9 @@ describe('validateEnv — JWT secrets', () => {
   it('rejects the old hardcoded fallbacks and placeholders', () => {
     expect(problems(base({ JWT_ACCESS_SECRET: 'access_secret' })).length).toBeGreaterThan(0);
     expect(problems(base({ JWT_REFRESH_SECRET: 'refresh_secret' })).length).toBeGreaterThan(0);
-    expect(problems(base({ JWT_ACCESS_SECRET: 'your-access-secret-change-this-in-production' })).join()).toMatch(/weak/);
+    expect(problems(base({ JWT_ACCESS_SECRET: 'your-access-secret-change-this-in-production' })).join()).toMatch(
+      /weak/,
+    );
   });
 
   it('rejects short and low-entropy secrets', () => {

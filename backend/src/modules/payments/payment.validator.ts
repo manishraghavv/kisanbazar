@@ -2,9 +2,7 @@ import Joi from 'joi';
 
 export const initiatePaymentSchema = Joi.object({
   orderId: Joi.string().uuid().required(),
-  paymentMethod: Joi.string()
-    .valid('UPI', 'CARD', 'NET_BANKING', 'COD', 'WALLET')
-    .required(),
+  paymentMethod: Joi.string().valid('UPI', 'CARD', 'NET_BANKING', 'COD', 'WALLET').required(),
   gateway: Joi.string().valid('razorpay', 'payu', 'cod').optional(),
 });
 
@@ -23,9 +21,7 @@ export const processRefundSchema = Joi.object({
 export const listPaymentsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(20),
-  status: Joi.string()
-    .valid('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED')
-    .optional(),
+  status: Joi.string().valid('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED').optional(),
   orderId: Joi.string().uuid().optional(),
 });
 

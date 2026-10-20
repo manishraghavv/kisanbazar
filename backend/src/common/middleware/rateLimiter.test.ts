@@ -6,12 +6,21 @@ function run(limiter: ReturnType<typeof createRateLimiter>, ip: string, path = '
   const res = {
     statusCode: 200,
     headers: {} as Record<string, unknown>,
-    setHeader(k: string, v: unknown) { this.headers[k] = v; },
-    status(c: number) { this.statusCode = c; return this; },
-    json() { return this; },
+    setHeader(k: string, v: unknown) {
+      this.headers[k] = v;
+    },
+    status(c: number) {
+      this.statusCode = c;
+      return this;
+    },
+    json() {
+      return this;
+    },
   };
   let passed = false;
-  limiter(req, res as any, () => { passed = true; });
+  limiter(req, res as any, () => {
+    passed = true;
+  });
   return { passed, res };
 }
 

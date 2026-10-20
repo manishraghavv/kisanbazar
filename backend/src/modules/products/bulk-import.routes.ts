@@ -88,7 +88,10 @@ router.post(
         if (skuExists) throw new Error(`SKU "${row.sku}" already exists`);
 
         // Generate unique slug
-        const baseSlug = row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const baseSlug = row.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
         let slug = baseSlug;
         let suffix = 1;
         while (await prisma.product.findUnique({ where: { slug } })) {
@@ -138,7 +141,7 @@ router.post(
       summary: { total: rows.length, created, errors },
       results,
     });
-  })
+  }),
 );
 
 export default router;

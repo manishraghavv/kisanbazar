@@ -15,11 +15,7 @@ function handleServiceError(err: unknown, res: Response): void {
 
 export const downloadInvoice = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const doc = await InvoiceService.generateInvoice(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const doc = await InvoiceService.generateInvoice(req.params.id as string, req.user.id, req.user.role);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${req.params.id}.pdf"`);
@@ -31,11 +27,7 @@ export const downloadInvoice = async (req: AuthRequest, res: Response): Promise<
 
 export const getInvoiceData = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = await InvoiceService.getInvoiceData(
-      req.params.id as string,
-      req.user.id,
-      req.user.role,
-    );
+    const data = await InvoiceService.getInvoiceData(req.params.id as string, req.user.id, req.user.role);
     res.json({ success: true, data });
   } catch (err) {
     handleServiceError(err, res);

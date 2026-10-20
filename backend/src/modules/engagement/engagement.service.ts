@@ -1,20 +1,13 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
-import {
-  ForbiddenError,
-  NotFoundError,
-  ConflictError,
-} from '../../common/errors';
+import { ForbiddenError, NotFoundError, ConflictError } from '../../common/errors';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  NOTIFICATION SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const NotificationService = {
-  async list(
-    userId: string,
-    filters: { page: number; limit: number; isRead?: boolean; type?: string },
-  ) {
+  async list(userId: string, filters: { page: number; limit: number; isRead?: boolean; type?: string }) {
     const { page, limit, isRead, type } = filters;
     const skip = (page - 1) * limit;
 
@@ -32,9 +25,8 @@ export const NotificationService = {
       prisma.notification.count({ where }),
     ]);
 
-    const unreadCount = isRead === false
-      ? total
-      : await prisma.notification.count({ where: { userId, isRead: false } });
+    const unreadCount =
+      isRead === false ? total : await prisma.notification.count({ where: { userId, isRead: false } });
 
     return {
       notifications,
@@ -85,10 +77,7 @@ export const NotificationService = {
     return { unreadCount: count };
   },
 
-  async create(
-    userId: string,
-    data: { title: string; message: string; type?: string; deepLink?: string },
-  ) {
+  async create(userId: string, data: { title: string; message: string; type?: string; deepLink?: string }) {
     return prisma.notification.create({
       data: {
         userId,
@@ -100,10 +89,7 @@ export const NotificationService = {
     });
   },
 
-  async createBulk(
-    userIds: string[],
-    data: { title: string; message: string; type?: string; deepLink?: string },
-  ) {
+  async createBulk(userIds: string[], data: { title: string; message: string; type?: string; deepLink?: string }) {
     const notifications = userIds.map((userId) => ({
       userId,
       title: data.title,
@@ -121,7 +107,7 @@ export const NotificationService = {
       message: 'Notification preferences storage not yet implemented.',
       preferences: _preferences,
     };
-  }
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -129,11 +115,7 @@ export const NotificationService = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const ReviewService = {
-  async create(
-    userId: string,
-    productId: string,
-    data: { rating: number; comment?: string; photoUrls?: string[] },
-  ) {
+  async create(userId: string, productId: string, data: { rating: number; comment?: string; photoUrls?: string[] }) {
     const product = await prisma.product.findUnique({
       where: { id: productId },
       select: { id: true, status: true },
@@ -167,11 +149,7 @@ export const ReviewService = {
     });
   },
 
-  async update(
-    userId: string,
-    reviewId: string,
-    data: { rating?: number; comment?: string; photoUrls?: string[] },
-  ) {
+  async update(userId: string, reviewId: string, data: { rating?: number; comment?: string; photoUrls?: string[] }) {
     const review = await prisma.review.findUnique({ where: { id: reviewId } });
     if (!review) throw new NotFoundError('Review not found');
     if (review.userId !== userId) throw new ForbiddenError('Access denied');
@@ -197,10 +175,7 @@ export const ReviewService = {
     return { message: 'Review deleted' };
   },
 
-  async listByProduct(
-    productId: string,
-    filters: { page: number; limit: number; rating?: number },
-  ) {
+  async listByProduct(productId: string, filters: { page: number; limit: number; rating?: number }) {
     const { page, limit, rating } = filters;
     const skip = (page - 1) * limit;
 
@@ -248,22 +223,25 @@ export const ReviewService = {
     });
 
     return { message: 'Marked as helpful', reviewId, helpfulCount: updated.helpfulCount };
-  }
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  SUPPORT TICKET SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const ticketMessages: Record<string, Array<{
-  id: string;
-  ticketId: string;
-  senderId: string;
-  senderName: string;
-  message: string;
-  isInternal: boolean;
-  createdAt: Date;
-}>> = {};
+const ticketMessages: Record<
+  string,
+  Array<{
+    id: string;
+    ticketId: string;
+    senderId: string;
+    senderName: string;
+    message: string;
+    isInternal: boolean;
+    createdAt: Date;
+  }>
+> = {};
 
 function addMessage(
   ticketId: string,
@@ -330,7 +308,10 @@ export const SupportTicketService = {
 
     const [tickets, total] = await Promise.all([
       prisma.supportTicket.findMany({
-        where, skip, take: limit, orderBy: { updatedAt: 'desc' },
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
         include: { user: { select: { fullName: true } } },
       }),
       prisma.supportTicket.count({ where }),
@@ -344,9 +325,14 @@ export const SupportTicketService = {
     return { tickets: ticketsWithMeta, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
-  async listAdmin(
-    filters: { page: number; limit: number; status?: string; priority?: string; category?: string; userId?: string },
-  ) {
+  async listAdmin(filters: {
+    page: number;
+    limit: number;
+    status?: string;
+    priority?: string;
+    category?: string;
+    userId?: string;
+  }) {
     const { page, limit, status, priority, category, userId } = filters;
     const skip = (page - 1) * limit;
 
@@ -358,7 +344,10 @@ export const SupportTicketService = {
 
     const [tickets, total] = await Promise.all([
       prisma.supportTicket.findMany({
-        where, skip, take: limit, orderBy: { updatedAt: 'desc' },
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
         include: { user: { select: { fullName: true, phoneNumber: true, email: true } } },
       }),
       prisma.supportTicket.count({ where }),
@@ -387,7 +376,14 @@ export const SupportTicketService = {
   async update(
     ticketId: string,
     actorId: string,
-    data: { title?: string; description?: string; priority?: string; status?: string; category?: string; remarks?: string },
+    data: {
+      title?: string;
+      description?: string;
+      priority?: string;
+      status?: string;
+      category?: string;
+      remarks?: string;
+    },
     isStaff: boolean,
   ) {
     const ticket = await prisma.supportTicket.findUnique({
@@ -458,5 +454,5 @@ export const SupportTicketService = {
       return { messages: messages.filter((m) => !m.isInternal) };
     }
     return { messages };
-  }
+  },
 };

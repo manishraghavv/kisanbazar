@@ -1,10 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../common/types/express.d';
-import {
-  EnterpriseService,
-  AuditLogService,
-  AnalyticsService,
-} from './enterprise.service';
+import { EnterpriseService, AuditLogService, AnalyticsService } from './enterprise.service';
 
 function handleServiceError(err: unknown, res: Response): void {
   const e = err as { status?: number; statusCode?: number; message?: string };
@@ -19,14 +15,18 @@ export const createIndustry = async (req: AuthRequest, res: Response): Promise<v
   try {
     const industry = await EnterpriseService.createIndustry(req.body);
     res.status(201).json({ success: true, message: 'Industry created', data: industry });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const updateIndustry = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const industry = await EnterpriseService.updateIndustry(req.params.id as string, req.body);
     res.json({ success: true, message: 'Industry updated', data: industry });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const listIndustries = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -36,15 +36,23 @@ export const listIndustries = async (req: AuthRequest, res: Response): Promise<v
       limit: Number(req.query.limit) || 20,
       isActive: req.query.isActive === 'true' ? true : req.query.isActive === 'false' ? false : undefined,
     });
-    res.json({ success: true, data: result.industries, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
-  } catch (err) { handleServiceError(err, res); }
+    res.json({
+      success: true,
+      data: result.industries,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getIndustry = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const industry = await EnterpriseService.getIndustry(req.params.id as string);
     res.json({ success: true, data: industry });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -55,28 +63,36 @@ export const createTier = async (req: AuthRequest, res: Response): Promise<void>
   try {
     const tier = await EnterpriseService.createTier(req.body);
     res.status(201).json({ success: true, message: 'Enterprise tier created', data: tier });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const updateTier = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const tier = await EnterpriseService.updateTier(req.params.id as string, req.body);
     res.json({ success: true, message: 'Enterprise tier updated', data: tier });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const listTiers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const tiers = await EnterpriseService.listTiers();
     res.json({ success: true, data: tiers });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getTier = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const tier = await EnterpriseService.getTier(req.params.id as string);
     res.json({ success: true, data: tier });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -87,14 +103,18 @@ export const assignVendorEnterprise = async (req: AuthRequest, res: Response): P
   try {
     const updated = await EnterpriseService.assignVendor(req.user.id, req.body);
     res.json({ success: true, message: 'Vendor enterprise classification updated', data: updated });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getVendorEnterprise = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const vendorData = await EnterpriseService.getVendorEnterprise(req.user.id);
     res.json({ success: true, data: vendorData });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -113,8 +133,14 @@ export const listAuditLogs = async (req: AuthRequest, res: Response): Promise<vo
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
     });
-    res.json({ success: true, data: result.logs, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
-  } catch (err) { handleServiceError(err, res); }
+    res.json({
+      success: true,
+      data: result.logs,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -129,7 +155,9 @@ export const trackProductView = async (req: AuthRequest, res: Response): Promise
       sessionId: req.headers['x-session-id'] as string | undefined,
     });
     res.status(201).json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const trackSearch = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -141,7 +169,9 @@ export const trackSearch = async (req: AuthRequest, res: Response): Promise<void
       sessionId: req.headers['x-session-id'] as string | undefined,
     });
     res.status(201).json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getVendorDashboard = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -152,7 +182,9 @@ export const getVendorDashboard = async (req: AuthRequest, res: Response): Promi
       period: req.query.period as string | undefined,
     });
     res.json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getAdminDashboard = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -162,7 +194,9 @@ export const getAdminDashboard = async (req: AuthRequest, res: Response): Promis
       endDate: req.query.endDate as string | undefined,
     });
     res.json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getSalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -175,8 +209,15 @@ export const getSalesReport = async (req: AuthRequest, res: Response): Promise<v
       endDate: req.query.endDate as string | undefined,
       categoryId: req.query.categoryId as string | undefined,
     });
-    res.json({ success: true, data: result.orders, summary: result.summary, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
-  } catch (err) { handleServiceError(err, res); }
+    res.json({
+      success: true,
+      data: result.orders,
+      summary: result.summary,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getProductPerformance = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -189,8 +230,14 @@ export const getProductPerformance = async (req: AuthRequest, res: Response): Pr
       categoryId: req.query.categoryId as string | undefined,
       vendorId: req.query.vendorId as string | undefined,
     });
-    res.json({ success: true, data: result.products, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
-  } catch (err) { handleServiceError(err, res); }
+    res.json({
+      success: true,
+      data: result.products,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getMarketIntelligence = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -208,7 +255,9 @@ export const getMarketIntelligence = async (req: AuthRequest, res: Response): Pr
       categoriesLimit: Number(req.query.categoriesLimit) || 10,
     });
     res.json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 export const getKhataOverdueReport = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -218,8 +267,14 @@ export const getKhataOverdueReport = async (req: AuthRequest, res: Response): Pr
       limit: Number(req.query.limit) || 20,
       minOverdueDays: Number(req.query.minOverdueDays) || 1,
     });
-    res.json({ success: true, data: result.accounts, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
-  } catch (err) { handleServiceError(err, res); }
+    res.json({
+      success: true,
+      data: result.accounts,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -230,5 +285,7 @@ export const exportUserData = async (req: AuthRequest, res: Response): Promise<v
   try {
     const result = await AnalyticsService.exportUserData(req.user.id, req.body.types);
     res.json({ success: true, data: result });
-  } catch (err) { handleServiceError(err, res); }
+  } catch (err) {
+    handleServiceError(err, res);
+  }
 };

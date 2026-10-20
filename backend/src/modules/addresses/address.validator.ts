@@ -8,7 +8,10 @@ export const createAddressSchema = Joi.object({
   city: Joi.string().min(2).max(100).required(),
   district: Joi.string().max(100).optional(),
   state: Joi.string().min(2).max(100).required(),
-  pincode: Joi.string().length(6).pattern(/^\d{6}$/).required(),
+  pincode: Joi.string()
+    .length(6)
+    .pattern(/^\d{6}$/)
+    .required(),
   isDefault: Joi.boolean().optional(),
 });
 
@@ -20,7 +23,10 @@ export const updateAddressSchema = Joi.object({
   city: Joi.string().min(2).max(100).optional(),
   district: Joi.string().max(100).optional(),
   state: Joi.string().min(2).max(100).optional(),
-  pincode: Joi.string().length(6).pattern(/^\d{6}$/).optional(),
+  pincode: Joi.string()
+    .length(6)
+    .pattern(/^\d{6}$/)
+    .optional(),
   isDefault: Joi.boolean().optional(),
 }).min(1);
 

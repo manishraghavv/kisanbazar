@@ -1,10 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../common/types/express.d';
-import {
-  NotificationService,
-  ReviewService,
-  SupportTicketService,
-} from './engagement.service';
+import { NotificationService, ReviewService, SupportTicketService } from './engagement.service';
 
 function handleServiceError(err: unknown, res: Response): void {
   const e = err as { status?: number; statusCode?: number; message?: string };
@@ -193,11 +189,7 @@ export const listAllTickets = async (req: AuthRequest, res: Response): Promise<v
 export const getTicketById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const isStaff = req.user.role === 'ADMIN' || req.user.role === 'VENDOR';
-    const ticket = await SupportTicketService.getById(
-      req.params.id as string,
-      req.user.id,
-      isStaff,
-    );
+    const ticket = await SupportTicketService.getById(req.params.id as string, req.user.id, isStaff);
     res.json({ success: true, data: ticket });
   } catch (err) {
     handleServiceError(err, res);
@@ -207,12 +199,7 @@ export const getTicketById = async (req: AuthRequest, res: Response): Promise<vo
 export const updateTicket = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const isStaff = req.user.role === 'ADMIN' || req.user.role === 'VENDOR';
-    const ticket = await SupportTicketService.update(
-      req.params.id as string,
-      req.user.id,
-      req.body,
-      isStaff,
-    );
+    const ticket = await SupportTicketService.update(req.params.id as string, req.user.id, req.body, isStaff);
     res.json({ success: true, message: 'Ticket updated', data: ticket });
   } catch (err) {
     handleServiceError(err, res);
@@ -222,12 +209,7 @@ export const updateTicket = async (req: AuthRequest, res: Response): Promise<voi
 export const addTicketMessage = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const isStaff = req.user.role === 'ADMIN' || req.user.role === 'VENDOR';
-    const msg = await SupportTicketService.addMessage(
-      req.params.id as string,
-      req.user.id,
-      req.body,
-      isStaff,
-    );
+    const msg = await SupportTicketService.addMessage(req.params.id as string, req.user.id, req.body, isStaff);
     res.status(201).json({ success: true, message: 'Message added', data: msg });
   } catch (err) {
     handleServiceError(err, res);
@@ -237,11 +219,7 @@ export const addTicketMessage = async (req: AuthRequest, res: Response): Promise
 export const getTicketMessages = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const isStaff = req.user.role === 'ADMIN' || req.user.role === 'VENDOR';
-    const result = await SupportTicketService.getMessages(
-      req.params.id as string,
-      req.user.id,
-      isStaff,
-    );
+    const result = await SupportTicketService.getMessages(req.params.id as string, req.user.id, isStaff);
     res.json({ success: true, data: result.messages });
   } catch (err) {
     handleServiceError(err, res);

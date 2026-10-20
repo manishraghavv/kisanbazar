@@ -9,15 +9,30 @@ vi.mock('./authMiddleware', () => auth);
 import { requireMetricsAccess, apiDocsGate, isBullBoardEnabled } from './opsAccess';
 
 const ORIGINAL = { ...process.env };
-afterEach(() => { process.env = { ...ORIGINAL }; });
+afterEach(() => {
+  process.env = { ...ORIGINAL };
+});
 
 function res() {
-  return { statusCode: 200, body: undefined as any, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+  return {
+    statusCode: 200,
+    body: undefined as any,
+    status(c: number) {
+      this.statusCode = c;
+      return this;
+    },
+    json(b: unknown) {
+      this.body = b;
+      return this;
+    },
+  };
 }
 const req = (authorization?: string) => ({ headers: { authorization }, method: 'GET', path: '/x' }) as any;
 
 beforeEach(() => {
-  auth.authenticate.mockReset().mockImplementation((_r, resp, next) => { resp.status(401).json({}); });
+  auth.authenticate.mockReset().mockImplementation((_r, resp, next) => {
+    resp.status(401).json({});
+  });
   auth.authorize.mockReset().mockImplementation(() => (_r: unknown, _s: unknown, next: () => void) => next());
 });
 

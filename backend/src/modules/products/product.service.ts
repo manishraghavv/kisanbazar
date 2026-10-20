@@ -1,22 +1,22 @@
-import {
-  Prisma,
-  ProductStatus,
-  ModerationStatus,
-} from '@prisma/client';
+import { Prisma, ProductStatus, ModerationStatus } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
-import {
-  ForbiddenError,
-  NotFoundError,
-  ConflictError,
-  BadRequestError,
-} from '../../common/errors';
+import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '../../common/errors';
 
 export const CategoryService = {
   async create(data: {
-    name: string; nameHi?: string; slug?: string; parentId?: string | null;
-    iconUrl?: string; sortOrder?: number;
+    name: string;
+    nameHi?: string;
+    slug?: string;
+    parentId?: string | null;
+    iconUrl?: string;
+    sortOrder?: number;
   }) {
-    const slug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slug =
+      data.slug ||
+      data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
     const existing = await prisma.category.findUnique({ where: { slug } });
     if (existing) throw new ConflictError(`Category with slug "${slug}" already exists`);
     if (data.parentId) {
@@ -25,17 +25,28 @@ export const CategoryService = {
     }
     return prisma.category.create({
       data: {
-        name: data.name, nameHi: data.nameHi, slug,
-        parentId: data.parentId ?? null, iconUrl: data.iconUrl, sortOrder: data.sortOrder ?? 0,
+        name: data.name,
+        nameHi: data.nameHi,
+        slug,
+        parentId: data.parentId ?? null,
+        iconUrl: data.iconUrl,
+        sortOrder: data.sortOrder ?? 0,
       },
       include: { parent: { select: { id: true, name: true, slug: true } } },
     });
   },
 
-  async update(id: string, data: {
-    name?: string; nameHi?: string; slug?: string; parentId?: string | null;
-    iconUrl?: string; sortOrder?: number;
-  }) {
+  async update(
+    id: string,
+    data: {
+      name?: string;
+      nameHi?: string;
+      slug?: string;
+      parentId?: string | null;
+      iconUrl?: string;
+      sortOrder?: number;
+    },
+  ) {
     const category = await prisma.category.findUnique({ where: { id } });
     if (!category) throw new NotFoundError('Category not found');
     if (data.slug && data.slug !== category.slug) {
@@ -87,8 +98,14 @@ export const CategoryService = {
     if (parentId !== undefined) where.parentId = parentId === 'null' ? null : parentId;
     const [categories, total] = await Promise.all([
       prisma.category.findMany({
-        where, skip, take: limit, orderBy: { sortOrder: 'asc' },
-        include: { parent: { select: { id: true, name: true, slug: true } }, _count: { select: { products: true, children: true } } },
+        where,
+        skip,
+        take: limit,
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          parent: { select: { id: true, name: true, slug: true } },
+          _count: { select: { products: true, children: true } },
+        },
       }),
       prisma.category.count({ where }),
     ]);
@@ -96,7 +113,10 @@ export const CategoryService = {
   },
 
   async delete(id: string) {
-    const category = await prisma.category.findUnique({ where: { id }, include: { _count: { select: { products: true, children: true } } } });
+    const category = await prisma.category.findUnique({
+      where: { id },
+      include: { _count: { select: { products: true, children: true } } },
+    });
     if (!category) throw new NotFoundError('Category not found');
     if (category._count.products > 0) throw new BadRequestError('Cannot delete category with associated products.');
     if (category._count.children > 0) throw new BadRequestError('Cannot delete category with subcategories.');
@@ -105,22 +125,39 @@ export const CategoryService = {
 
   async getTree() {
     return prisma.category.findMany({
-      where: { parentId: null }, orderBy: { sortOrder: 'asc' },
-      include: { children: { orderBy: { sortOrder: 'asc' }, include: { children: { orderBy: { sortOrder: 'asc' } } } } },
+      where: { parentId: null },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        children: { orderBy: { sortOrder: 'asc' }, include: { children: { orderBy: { sortOrder: 'asc' } } } },
+      },
     });
   },
 };
 
 function generateProductSlug(name: string, vendorId: string): string {
-  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   return `${base}-${vendorId.slice(0, 8)}`;
 }
 
 export const ProductService = {
-  async create(vendorUserId: string, data: {
-    categoryId: string; name: string; nameHi?: string; description?: string; descriptionHi?: string;
-    hsnCode?: string; gstRate?: number; unitOfMeasure?: string; applicableCrops?: string[]; seasonalFlag?: boolean;
-  }) {
+  async create(
+    vendorUserId: string,
+    data: {
+      categoryId: string;
+      name: string;
+      nameHi?: string;
+      description?: string;
+      descriptionHi?: string;
+      hsnCode?: string;
+      gstRate?: number;
+      unitOfMeasure?: string;
+      applicableCrops?: string[];
+      seasonalFlag?: boolean;
+    },
+  ) {
     const vendor = await prisma.vendor.findUnique({ where: { userId: vendorUserId } });
     if (!vendor) throw new ForbiddenError('Vendor profile not found');
     if (vendor.kycStatus !== 'APPROVED') throw new ForbiddenError('KYC must be approved before publishing products');
@@ -129,35 +166,68 @@ export const ProductService = {
     const slug = generateProductSlug(data.name, vendor.id);
     return prisma.product.create({
       data: {
-        vendorId: vendor.id, categoryId: data.categoryId, name: data.name, nameHi: data.nameHi, slug,
-        description: data.description, descriptionHi: data.descriptionHi, hsnCode: data.hsnCode,
+        vendorId: vendor.id,
+        categoryId: data.categoryId,
+        name: data.name,
+        nameHi: data.nameHi,
+        slug,
+        description: data.description,
+        descriptionHi: data.descriptionHi,
+        hsnCode: data.hsnCode,
         gstRate: data.gstRate ? new Prisma.Decimal(data.gstRate) : undefined,
-        unitOfMeasure: data.unitOfMeasure, applicableCrops: data.applicableCrops || [],
-        seasonalFlag: data.seasonalFlag ?? false, status: 'DRAFT', moderationStatus: 'PENDING',
+        unitOfMeasure: data.unitOfMeasure,
+        applicableCrops: data.applicableCrops || [],
+        seasonalFlag: data.seasonalFlag ?? false,
+        status: 'DRAFT',
+        moderationStatus: 'PENDING',
       },
       include: { category: { select: { id: true, name: true, slug: true } } },
     });
   },
 
   async update(productId: string, vendorUserId: string, requesterRole: string, data: any) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (requesterRole === 'VENDOR' && product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
 
     const updateData: Prisma.ProductUpdateInput = {};
-    const allowedFields = ['categoryId', 'name', 'nameHi', 'description', 'descriptionHi', 'hsnCode', 'gstRate', 'unitOfMeasure', 'applicableCrops', 'seasonalFlag', 'status'];
+    const allowedFields = [
+      'categoryId',
+      'name',
+      'nameHi',
+      'description',
+      'descriptionHi',
+      'hsnCode',
+      'gstRate',
+      'unitOfMeasure',
+      'applicableCrops',
+      'seasonalFlag',
+      'status',
+    ];
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        if (field === 'gstRate') { updateData[field] = new Prisma.Decimal(data[field]); }
-        else { (updateData as any)[field] = data[field]; }
+        if (field === 'gstRate') {
+          updateData[field] = new Prisma.Decimal(data[field]);
+        } else {
+          (updateData as any)[field] = data[field];
+        }
       }
     }
     if (requesterRole === 'VENDOR' && product.moderationStatus !== 'PENDING') {
-      if (data.name || data.description || data.hsnCode) { updateData.moderationStatus = 'PENDING'; }
+      if (data.name || data.description || data.hsnCode) {
+        updateData.moderationStatus = 'PENDING';
+      }
     }
     return prisma.product.update({
-      where: { id: productId }, data: updateData,
-      include: { category: { select: { id: true, name: true, slug: true } }, variants: { select: { id: true, sku: true, variantName: true, sellingPrice: true, stockQuantity: true } } },
+      where: { id: productId },
+      data: updateData,
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        variants: { select: { id: true, sku: true, variantName: true, sellingPrice: true, stockQuantity: true } },
+      },
     });
   },
 
@@ -166,7 +236,10 @@ export const ProductService = {
     if (!product) throw new NotFoundError('Product not found');
     const moderationStatus = data.status as ModerationStatus;
     const productStatus = data.status === 'APPROVED' ? 'ACTIVE' : 'DRAFT';
-    return prisma.product.update({ where: { id: productId }, data: { moderationStatus, status: productStatus as ProductStatus } });
+    return prisma.product.update({
+      where: { id: productId },
+      data: { moderationStatus, status: productStatus as ProductStatus },
+    });
   },
 
   async getById(productId: string) {
@@ -183,10 +256,42 @@ export const ProductService = {
     });
   },
 
-  async list(filters: { page: number; limit: number; search?: string; categoryId?: string; vendorId?: string; status?: string; minPrice?: number; maxPrice?: number; seasonalFlag?: boolean; crop?: string; sortBy: string; sortOrder: string; inStockOnly?: boolean; minRating?: number }) {
-    const { page, limit, search, categoryId, vendorId, status, minPrice, maxPrice, seasonalFlag, crop, sortBy, sortOrder, inStockOnly, minRating } = filters;
+  async list(filters: {
+    page: number;
+    limit: number;
+    search?: string;
+    categoryId?: string;
+    vendorId?: string;
+    status?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    seasonalFlag?: boolean;
+    crop?: string;
+    sortBy: string;
+    sortOrder: string;
+    inStockOnly?: boolean;
+    minRating?: number;
+  }) {
+    const {
+      page,
+      limit,
+      search,
+      categoryId,
+      vendorId,
+      status,
+      minPrice,
+      maxPrice,
+      seasonalFlag,
+      crop,
+      sortBy,
+      sortOrder,
+      inStockOnly,
+      minRating,
+    } = filters;
     const skip = (page - 1) * limit;
-    const where: Prisma.ProductWhereInput = { ...(status ? {} : { moderationStatus: 'APPROVED' as ModerationStatus, status: 'ACTIVE' as ProductStatus }) };
+    const where: Prisma.ProductWhereInput = {
+      ...(status ? {} : { moderationStatus: 'APPROVED' as ModerationStatus, status: 'ACTIVE' as ProductStatus }),
+    };
     if (status) where.status = status as ProductStatus;
     if (categoryId) where.categoryId = categoryId;
     if (vendorId) where.vendorId = vendorId;
@@ -202,7 +307,14 @@ export const ProductService = {
     if (minPrice !== undefined || maxPrice !== undefined || inStockOnly) {
       where.variants = {
         some: {
-          ...(minPrice !== undefined || maxPrice !== undefined ? { sellingPrice: { ...(minPrice !== undefined ? { gte: minPrice } : {}), ...(maxPrice !== undefined ? { lte: maxPrice } : {}) } } : {}),
+          ...(minPrice !== undefined || maxPrice !== undefined
+            ? {
+                sellingPrice: {
+                  ...(minPrice !== undefined ? { gte: minPrice } : {}),
+                  ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+                },
+              }
+            : {}),
           ...(inStockOnly ? { stockQuantity: { gt: 0 } } : {}),
         },
       };
@@ -216,11 +328,17 @@ export const ProductService = {
     else orderBy.createdAt = sortOrder as Prisma.SortOrder;
     const [products, total] = await Promise.all([
       prisma.product.findMany({
-        where, skip, take: limit, orderBy,
+        where,
+        skip,
+        take: limit,
+        orderBy,
         include: {
           category: { select: { id: true, name: true, slug: true } },
           vendor: { select: { id: true, businessName: true } },
-          variants: { select: { id: true, sku: true, variantName: true, mrp: true, sellingPrice: true, stockQuantity: true }, orderBy: { sellingPrice: 'asc' } },
+          variants: {
+            select: { id: true, sku: true, variantName: true, mrp: true, sellingPrice: true, stockQuantity: true },
+            orderBy: { sellingPrice: 'asc' },
+          },
           images: { where: { isPrimary: true }, select: { imageUrl: true }, take: 1 },
           _count: { select: { reviews: true } },
         },
@@ -231,30 +349,70 @@ export const ProductService = {
   },
 
   async delete(productId: string, vendorUserId: string, requesterRole: string) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (requesterRole === 'VENDOR' && product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     await prisma.product.update({ where: { id: productId }, data: { status: 'DISCONTINUED' as ProductStatus } });
   },
 
   async submitForModeration(productId: string, vendorUserId: string) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
-    return prisma.product.update({ where: { id: productId }, data: { moderationStatus: 'PENDING' as ModerationStatus, status: 'DRAFT' as ProductStatus } });
+    return prisma.product.update({
+      where: { id: productId },
+      data: { moderationStatus: 'PENDING' as ModerationStatus, status: 'DRAFT' as ProductStatus },
+    });
   },
 
-  async createVariant(productId: string, vendorUserId: string, data: { sku: string; variantName?: string; mrp: number; sellingPrice: number; stockQuantity?: number; reorderThreshold?: number; weightGrams?: number; attributes?: any }) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+  async createVariant(
+    productId: string,
+    vendorUserId: string,
+    data: {
+      sku: string;
+      variantName?: string;
+      mrp: number;
+      sellingPrice: number;
+      stockQuantity?: number;
+      reorderThreshold?: number;
+      weightGrams?: number;
+      attributes?: any;
+    },
+  ) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     const existingSku = await prisma.productVariant.findUnique({ where: { sku: data.sku } });
     if (existingSku) throw new ConflictError(`SKU "${data.sku}" already exists`);
-    return prisma.productVariant.create({ data: { productId, sku: data.sku, variantName: data.variantName, mrp: new Prisma.Decimal(data.mrp), sellingPrice: new Prisma.Decimal(data.sellingPrice), stockQuantity: data.stockQuantity ?? 0, reorderThreshold: data.reorderThreshold ?? 0, weightGrams: data.weightGrams, attributes: data.attributes ?? undefined } });
+    return prisma.productVariant.create({
+      data: {
+        productId,
+        sku: data.sku,
+        variantName: data.variantName,
+        mrp: new Prisma.Decimal(data.mrp),
+        sellingPrice: new Prisma.Decimal(data.sellingPrice),
+        stockQuantity: data.stockQuantity ?? 0,
+        reorderThreshold: data.reorderThreshold ?? 0,
+        weightGrams: data.weightGrams,
+        attributes: data.attributes ?? undefined,
+      },
+    });
   },
 
   async updateVariant(variantId: string, vendorUserId: string, data: any) {
-    const variant = await prisma.productVariant.findUnique({ where: { id: variantId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: variantId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!variant) throw new NotFoundError('Variant not found');
     if (variant.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     if (data.sku && data.sku !== variant.sku) {
@@ -262,18 +420,33 @@ export const ProductService = {
       if (skuExists) throw new ConflictError(`SKU "${data.sku}" already exists`);
     }
     const updateData: Prisma.ProductVariantUpdateInput = {};
-    const allowedFields = ['sku', 'variantName', 'mrp', 'sellingPrice', 'stockQuantity', 'reorderThreshold', 'weightGrams', 'attributes'];
+    const allowedFields = [
+      'sku',
+      'variantName',
+      'mrp',
+      'sellingPrice',
+      'stockQuantity',
+      'reorderThreshold',
+      'weightGrams',
+      'attributes',
+    ];
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        if (field === 'mrp' || field === 'sellingPrice') { updateData[field] = new Prisma.Decimal(data[field]); }
-        else { (updateData as any)[field] = data[field]; }
+        if (field === 'mrp' || field === 'sellingPrice') {
+          updateData[field] = new Prisma.Decimal(data[field]);
+        } else {
+          (updateData as any)[field] = data[field];
+        }
       }
     }
     return prisma.productVariant.update({ where: { id: variantId }, data: updateData });
   },
 
   async deleteVariant(variantId: string, vendorUserId: string) {
-    const variant = await prisma.productVariant.findUnique({ where: { id: variantId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: variantId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!variant) throw new NotFoundError('Variant not found');
     if (variant.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     await prisma.productVariant.delete({ where: { id: variantId } });
@@ -285,23 +458,40 @@ export const ProductService = {
     return prisma.productVariant.findMany({ where: { productId }, orderBy: { createdAt: 'asc' } });
   },
 
-  async addImage(productId: string, vendorUserId: string, data: { imageUrl: string; isPrimary?: boolean; sortOrder?: number }) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+  async addImage(
+    productId: string,
+    vendorUserId: string,
+    data: { imageUrl: string; isPrimary?: boolean; sortOrder?: number },
+  ) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
-    if (data.isPrimary) { await prisma.productImage.updateMany({ where: { productId, isPrimary: true }, data: { isPrimary: false } }); }
-    return prisma.productImage.create({ data: { productId, imageUrl: data.imageUrl, isPrimary: data.isPrimary ?? false, sortOrder: data.sortOrder ?? 0 } });
+    if (data.isPrimary) {
+      await prisma.productImage.updateMany({ where: { productId, isPrimary: true }, data: { isPrimary: false } });
+    }
+    return prisma.productImage.create({
+      data: { productId, imageUrl: data.imageUrl, isPrimary: data.isPrimary ?? false, sortOrder: data.sortOrder ?? 0 },
+    });
   },
 
   async deleteImage(imageId: string, vendorUserId: string) {
-    const image = await prisma.productImage.findUnique({ where: { id: imageId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+    const image = await prisma.productImage.findUnique({
+      where: { id: imageId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!image) throw new NotFoundError('Image not found');
     if (image.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     await prisma.productImage.delete({ where: { id: imageId } });
   },
 
   async setPrimaryImage(imageId: string, productId: string, vendorUserId: string) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     const image = await prisma.productImage.findFirst({ where: { id: imageId, productId } });
@@ -317,21 +507,44 @@ export const ProductService = {
   },
 
   async addAttribute(productId: string, vendorUserId: string, data: { name: string; value: string; nameHi?: string }) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, include: { vendor: { select: { userId: true } } } });
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { select: { userId: true } } },
+    });
     if (!product) throw new NotFoundError('Product not found');
     if (product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
-    return prisma.productAttribute.create({ data: { productId, name: data.name, value: data.value, nameHi: data.nameHi } });
+    return prisma.productAttribute.create({
+      data: { productId, name: data.name, value: data.value, nameHi: data.nameHi },
+    });
   },
 
-  async updateAttribute(attributeId: string, productId: string, vendorUserId: string, data: { name?: string; value?: string; nameHi?: string }) {
-    const attribute = await prisma.productAttribute.findFirst({ where: { id: attributeId, productId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+  async updateAttribute(
+    attributeId: string,
+    productId: string,
+    vendorUserId: string,
+    data: { name?: string; value?: string; nameHi?: string },
+  ) {
+    const attribute = await prisma.productAttribute.findFirst({
+      where: { id: attributeId, productId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!attribute) throw new NotFoundError('Attribute not found');
     if (attribute.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
-    return prisma.productAttribute.update({ where: { id: attributeId }, data: { ...(data.name !== undefined && { name: data.name }), ...(data.value !== undefined && { value: data.value }), ...(data.nameHi !== undefined && { nameHi: data.nameHi }) } });
+    return prisma.productAttribute.update({
+      where: { id: attributeId },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.value !== undefined && { value: data.value }),
+        ...(data.nameHi !== undefined && { nameHi: data.nameHi }),
+      },
+    });
   },
 
   async deleteAttribute(attributeId: string, productId: string, vendorUserId: string) {
-    const attribute = await prisma.productAttribute.findFirst({ where: { id: attributeId, productId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+    const attribute = await prisma.productAttribute.findFirst({
+      where: { id: attributeId, productId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!attribute) throw new NotFoundError('Attribute not found');
     if (attribute.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     await prisma.productAttribute.delete({ where: { id: attributeId } });
@@ -339,14 +552,31 @@ export const ProductService = {
 };
 
 export const InventoryService = {
-  async adjust(vendorUserId: string, data: { variantId: string; quantityChange: number; reason: string; referenceId?: string }) {
-    const variant = await prisma.productVariant.findUnique({ where: { id: data.variantId }, include: { product: { include: { vendor: { select: { userId: true } } } } } });
+  async adjust(
+    vendorUserId: string,
+    data: { variantId: string; quantityChange: number; reason: string; referenceId?: string },
+  ) {
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: data.variantId },
+      include: { product: { include: { vendor: { select: { userId: true } } } } },
+    });
     if (!variant) throw new NotFoundError('Variant not found');
     if (variant.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
     const newQty = variant.stockQuantity + data.quantityChange;
-    if (newQty < 0) throw new BadRequestError(`Insufficient stock. Available: ${variant.stockQuantity}, Requested change: ${data.quantityChange}`);
+    if (newQty < 0)
+      throw new BadRequestError(
+        `Insufficient stock. Available: ${variant.stockQuantity}, Requested change: ${data.quantityChange}`,
+      );
     const [log] = await prisma.$transaction([
-      prisma.inventory.create({ data: { variantId: data.variantId, quantityChange: data.quantityChange, reason: data.reason, referenceId: data.referenceId, performedById: vendorUserId } }),
+      prisma.inventory.create({
+        data: {
+          variantId: data.variantId,
+          quantityChange: data.quantityChange,
+          reason: data.reason,
+          referenceId: data.referenceId,
+          performedById: vendorUserId,
+        },
+      }),
       prisma.productVariant.update({ where: { id: data.variantId }, data: { stockQuantity: newQty } }),
     ]);
     return log;
@@ -371,7 +601,15 @@ export const InventoryService = {
     const where: Prisma.InventoryWhereInput = { variant: { product: { vendorId: vendor.id } } };
     if (variantId) where.variantId = variantId;
     const [logs, total] = await Promise.all([
-      prisma.inventory.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' }, include: { variant: { select: { id: true, sku: true, variantName: true, product: { select: { name: true } } } } } }),
+      prisma.inventory.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          variant: { select: { id: true, sku: true, variantName: true, product: { select: { name: true } } } },
+        },
+      }),
       prisma.inventory.count({ where }),
     ]);
     return { logs, total, page, limit, totalPages: Math.ceil(total / limit) };

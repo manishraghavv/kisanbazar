@@ -21,16 +21,8 @@ import { EnterpriseRepository } from '../../modules/enterprise/enterprise.reposi
 // ── Services ───────────────────────────────────────────────────────────────
 import { AuthService } from '../../modules/auth/auth.service';
 import { UserService } from '../../modules/users/user.service';
-import {
-  NotificationService,
-  ReviewService,
-  SupportTicketService,
-} from '../../modules/engagement/engagement.service';
-import {
-  EnterpriseService,
-  AuditLogService,
-  AnalyticsService,
-} from '../../modules/enterprise/enterprise.service';
+import { NotificationService, ReviewService, SupportTicketService } from '../../modules/engagement/engagement.service';
+import { EnterpriseService, AuditLogService, AnalyticsService } from '../../modules/enterprise/enterprise.service';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Register PrismaClient (singleton — same instance everywhere)

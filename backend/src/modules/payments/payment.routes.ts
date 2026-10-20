@@ -81,43 +81,150 @@ function validateQuery(schema: ReturnType<typeof import('joi').object>) {
 //  PAYMENTS  (Authenticated)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.post('/payments/initiate', authenticate, validateBody(initiatePaymentSchema), asyncHandler((req, res) => initiatePayment(req as AuthRequest, res)));
-router.post('/payments/verify', authenticate, validateBody(verifyPaymentSchema), asyncHandler((req, res) => verifyPayment(req as AuthRequest, res)));
-router.get('/payments', authenticate, validateQuery(listPaymentsQuerySchema), asyncHandler((req, res) => listPayments(req as AuthRequest, res)));
-router.get('/payments/:id', authenticate, asyncHandler((req, res) => getPayment(req as AuthRequest, res)));
-router.post('/payments/:id/refund', authenticate, authorize('ADMIN'), validateBody(processRefundSchema), asyncHandler((req, res) => processRefund(req as AuthRequest, res)));
+router.post(
+  '/payments/initiate',
+  authenticate,
+  validateBody(initiatePaymentSchema),
+  asyncHandler((req, res) => initiatePayment(req as AuthRequest, res)),
+);
+router.post(
+  '/payments/verify',
+  authenticate,
+  validateBody(verifyPaymentSchema),
+  asyncHandler((req, res) => verifyPayment(req as AuthRequest, res)),
+);
+router.get(
+  '/payments',
+  authenticate,
+  validateQuery(listPaymentsQuerySchema),
+  asyncHandler((req, res) => listPayments(req as AuthRequest, res)),
+);
+router.get(
+  '/payments/:id',
+  authenticate,
+  asyncHandler((req, res) => getPayment(req as AuthRequest, res)),
+);
+router.post(
+  '/payments/:id/refund',
+  authenticate,
+  authorize('ADMIN'),
+  validateBody(processRefundSchema),
+  asyncHandler((req, res) => processRefund(req as AuthRequest, res)),
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  WALLET  (Authenticated)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get('/wallet', authenticate, asyncHandler((req, res) => getWalletBalance(req as AuthRequest, res)));
-router.post('/wallet/add-money', authenticate, validateBody(addMoneySchema), asyncHandler((req, res) => addMoneyToWallet(req as AuthRequest, res)));
-router.post('/wallet/pay', authenticate, validateBody(walletPaymentSchema), asyncHandler((req, res) => useWallet(req as AuthRequest, res)));
-router.get('/wallet/transactions', authenticate, validateQuery(walletTransactionsQuerySchema), asyncHandler((req, res) => getWalletTransactions(req as AuthRequest, res)));
+router.get(
+  '/wallet',
+  authenticate,
+  asyncHandler((req, res) => getWalletBalance(req as AuthRequest, res)),
+);
+router.post(
+  '/wallet/add-money',
+  authenticate,
+  validateBody(addMoneySchema),
+  asyncHandler((req, res) => addMoneyToWallet(req as AuthRequest, res)),
+);
+router.post(
+  '/wallet/pay',
+  authenticate,
+  validateBody(walletPaymentSchema),
+  asyncHandler((req, res) => useWallet(req as AuthRequest, res)),
+);
+router.get(
+  '/wallet/transactions',
+  authenticate,
+  validateQuery(walletTransactionsQuerySchema),
+  asyncHandler((req, res) => getWalletTransactions(req as AuthRequest, res)),
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  COUPONS  (Public: GET, validate; Admin: POST, PUT, DELETE)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get('/coupons', validateQuery(listCouponsQuerySchema), asyncHandler((req, res) => listCoupons(req as AuthRequest, res)));
-router.get('/coupons/:id', asyncHandler((req, res) => getCouponById(req as AuthRequest, res)));
-router.post('/coupons/validate', validateBody(validateCouponSchema), asyncHandler((req, res) => validateCoupon(req as AuthRequest, res)));
+router.get(
+  '/coupons',
+  validateQuery(listCouponsQuerySchema),
+  asyncHandler((req, res) => listCoupons(req as AuthRequest, res)),
+);
+router.get(
+  '/coupons/:id',
+  asyncHandler((req, res) => getCouponById(req as AuthRequest, res)),
+);
+router.post(
+  '/coupons/validate',
+  validateBody(validateCouponSchema),
+  asyncHandler((req, res) => validateCoupon(req as AuthRequest, res)),
+);
 
-router.post('/coupons', authenticate, authorize('ADMIN'), validateBody(createCouponSchema), asyncHandler((req, res) => createCoupon(req as AuthRequest, res)));
-router.put('/coupons/:id', authenticate, authorize('ADMIN'), validateBody(updateCouponSchema), asyncHandler((req, res) => updateCoupon(req as AuthRequest, res)));
-router.delete('/coupons/:id', authenticate, authorize('ADMIN'), asyncHandler((req, res) => deleteCoupon(req as AuthRequest, res)));
+router.post(
+  '/coupons',
+  authenticate,
+  authorize('ADMIN'),
+  validateBody(createCouponSchema),
+  asyncHandler((req, res) => createCoupon(req as AuthRequest, res)),
+);
+router.put(
+  '/coupons/:id',
+  authenticate,
+  authorize('ADMIN'),
+  validateBody(updateCouponSchema),
+  asyncHandler((req, res) => updateCoupon(req as AuthRequest, res)),
+);
+router.delete(
+  '/coupons/:id',
+  authenticate,
+  authorize('ADMIN'),
+  asyncHandler((req, res) => deleteCoupon(req as AuthRequest, res)),
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  VENDOR SETTLEMENTS & COMMISSIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.get('/vendors/me/commissions', authenticate, authorize('VENDOR'), validateQuery(listCommissionsQuerySchema), asyncHandler((req, res) => getVendorCommissions(req as AuthRequest, res)));
-router.get('/vendors/:vendorId/settlements', authenticate, authorize('VENDOR', 'ADMIN'), validateQuery(listSettlementsQuerySchema), asyncHandler((req, res) => getSettlements(req as AuthRequest, res)));
-router.get('/settlements', authenticate, authorize('ADMIN'), validateQuery(listSettlementsQuerySchema), asyncHandler((req, res) => listAllSettlements(req as AuthRequest, res)));
-router.get('/settlements/:id', authenticate, authorize('VENDOR', 'ADMIN'), asyncHandler((req, res) => getSettlementById(req as AuthRequest, res)));
+router.get(
+  '/vendors/me/commissions',
+  authenticate,
+  authorize('VENDOR'),
+  validateQuery(listCommissionsQuerySchema),
+  asyncHandler((req, res) => getVendorCommissions(req as AuthRequest, res)),
+);
+router.get(
+  '/vendors/:vendorId/settlements',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  validateQuery(listSettlementsQuerySchema),
+  asyncHandler((req, res) => getSettlements(req as AuthRequest, res)),
+);
+router.get(
+  '/settlements',
+  authenticate,
+  authorize('ADMIN'),
+  validateQuery(listSettlementsQuerySchema),
+  asyncHandler((req, res) => listAllSettlements(req as AuthRequest, res)),
+);
+router.get(
+  '/settlements/:id',
+  authenticate,
+  authorize('VENDOR', 'ADMIN'),
+  asyncHandler((req, res) => getSettlementById(req as AuthRequest, res)),
+);
 
-router.post('/settlements/generate', authenticate, authorize('ADMIN'), validateBody(generateSettlementSchema), asyncHandler((req, res) => generateSettlement(req as AuthRequest, res)));
-router.post('/settlements/:id/pay', authenticate, authorize('ADMIN'), validateBody(paySettlementSchema), asyncHandler((req, res) => markSettlementPaid(req as AuthRequest, res)));
+router.post(
+  '/settlements/generate',
+  authenticate,
+  authorize('ADMIN'),
+  validateBody(generateSettlementSchema),
+  asyncHandler((req, res) => generateSettlement(req as AuthRequest, res)),
+);
+router.post(
+  '/settlements/:id/pay',
+  authenticate,
+  authorize('ADMIN'),
+  validateBody(paySettlementSchema),
+  asyncHandler((req, res) => markSettlementPaid(req as AuthRequest, res)),
+);
 
 export default router;

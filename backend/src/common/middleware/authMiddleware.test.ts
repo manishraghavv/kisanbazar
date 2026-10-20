@@ -8,7 +8,13 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('../lib/userAuthState', async () => {
   const actual = await vi.importActual<typeof import('../lib/userAuthState')>('../lib/userAuthState');
-  return { ...actual, getUserAuthStatus: () => { state.calls++; return state.impl(); } };
+  return {
+    ...actual,
+    getUserAuthStatus: () => {
+      state.calls++;
+      return state.impl();
+    },
+  };
 });
 vi.mock('../lib/prisma', () => ({ prisma: {} }));
 vi.mock('../lib/cache', () => ({ cache: {} }));
@@ -23,13 +29,27 @@ const token = (userId = 'u1', role = 'FARMER', secret = SECRET, opts: jwt.SignOp
 
 async function run(authorization?: string) {
   const req = { headers: { authorization } } as any;
-  const res = { statusCode: 200, body: undefined as any, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+  const res = {
+    statusCode: 200,
+    body: undefined as any,
+    status(c: number) {
+      this.statusCode = c;
+      return this;
+    },
+    json(b: unknown) {
+      this.body = b;
+      return this;
+    },
+  };
   const next = vi.fn();
   await authenticate(req, res as any, next);
   return { req, res, next };
 }
 
-beforeEach(() => { state.calls = 0; state.impl = async () => 'ACTIVE'; });
+beforeEach(() => {
+  state.calls = 0;
+  state.impl = async () => 'ACTIVE';
+});
 
 describe('authenticate', () => {
   it('accepts a valid token for an ACTIVE user and sets req.user', async () => {
@@ -56,7 +76,9 @@ describe('authenticate', () => {
   });
 
   it('fails closed with 503 when the status lookup errors', async () => {
-    state.impl = async () => { throw new Error('db down'); };
+    state.impl = async () => {
+      throw new Error('db down');
+    };
     const { res, next } = await run(`Bearer ${token()}`);
     expect(res.statusCode).toBe(503);
     expect(next).not.toHaveBeenCalled();
@@ -65,7 +87,9 @@ describe('authenticate', () => {
   it('rejects missing, malformed, wrong-secret and expired tokens without a DB lookup', async () => {
     expect((await run()).res.statusCode).toBe(401);
     expect((await run('Bearer garbage')).res.statusCode).toBe(401);
-    expect((await run(`Bearer ${token('u1', 'FARMER', 'another-secret-that-is-long-enough-123456')}`)).res.statusCode).toBe(401);
+    expect(
+      (await run(`Bearer ${token('u1', 'FARMER', 'another-secret-that-is-long-enough-123456')}`)).res.statusCode,
+    ).toBe(401);
     expect((await run(`Bearer ${token('u1', 'FARMER', SECRET, { expiresIn: -10 })}`)).res.statusCode).toBe(401);
     expect(state.calls).toBe(0);
   });

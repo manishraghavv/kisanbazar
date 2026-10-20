@@ -22,7 +22,11 @@ export const listAddresses = async (req: AuthRequest, res: Response): Promise<vo
       page: Number(req.query.page) || 1,
       limit: Number(req.query.limit) || 20,
     });
-    res.json({ success: true, data: result.addresses, pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages } });
+    res.json({
+      success: true,
+      data: result.addresses,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages },
+    });
   } catch (err) {
     handleServiceError(err, res);
   }

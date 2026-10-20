@@ -31,7 +31,11 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
 });
 
-const uploadLimiter = createRateLimiter({ windowMs: 60_000, max: 30, message: 'Too many uploads. Please wait a moment.' });
+const uploadLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 30,
+  message: 'Too many uploads. Please wait a moment.',
+});
 
 const router = Router();
 
@@ -45,7 +49,9 @@ router.post(
     upload.single('file')(req, res, (err: unknown) => {
       if (err instanceof multer.MulterError) {
         const tooLarge = err.code === 'LIMIT_FILE_SIZE';
-        res.status(tooLarge ? 413 : 400).json({ success: false, message: tooLarge ? 'File too large (max 5 MB)' : err.message });
+        res
+          .status(tooLarge ? 413 : 400)
+          .json({ success: false, message: tooLarge ? 'File too large (max 5 MB)' : err.message });
         return;
       }
       if (err) return next(err);

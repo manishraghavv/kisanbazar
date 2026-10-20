@@ -10,7 +10,12 @@ import { saveImage } from './upload.routes';
 
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(16)]);
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]);
-const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0x24, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(8)]);
+const WEBP = Buffer.concat([
+  Buffer.from('RIFF'),
+  Buffer.from([0x24, 0, 0, 0]),
+  Buffer.from('WEBPVP8 '),
+  Buffer.alloc(8),
+]);
 
 describe('detectImageType', () => {
   it('recognises JPEG, PNG and WebP by signature', () => {
@@ -21,7 +26,9 @@ describe('detectImageType', () => {
 
   it('rejects non-images regardless of what the client claimed', () => {
     expect(detectImageType(Buffer.from('<?php system($_GET["c"]); ?>'))).toBeNull();
-    expect(detectImageType(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'))).toBeNull();
+    expect(
+      detectImageType(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')),
+    ).toBeNull();
     expect(detectImageType(Buffer.from('MZ\x90\x00'))).toBeNull(); // Windows executable
     expect(detectImageType(Buffer.from('RIFF\x00\x00\x00\x00WAVEfmt '))).toBeNull(); // RIFF but not WebP
     expect(detectImageType(Buffer.alloc(0))).toBeNull();
@@ -31,8 +38,12 @@ describe('detectImageType', () => {
 
 describe('saveImage', () => {
   let dir: string;
-  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-test-')); });
-  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-test-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   it('stores a valid image under a random name with an extension from the detected type', async () => {
     const a = await saveImage(PNG, dir);

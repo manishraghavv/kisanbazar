@@ -1,11 +1,7 @@
 import { comparePassword } from '../../common/utils/passwordUtils';
 import { revokeUserAccess } from '../../common/lib/userAuthState';
 import { prisma } from '../../common/lib/prisma';
-import {
-  NotFoundError,
-  ConflictError,
-  UnauthorizedError,
-} from '../../common/errors';
+import { NotFoundError, ConflictError, UnauthorizedError } from '../../common/errors';
 import { UserRole, UserStatus } from '@prisma/client';
 
 export interface UpdateProfileInput {

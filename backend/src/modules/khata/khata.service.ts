@@ -1,20 +1,19 @@
 import { KhataStatus, KhataTransactionType, KhataRequestStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
-import {
-  ForbiddenError,
-  NotFoundError,
-  ConflictError,
-  BadRequestError,
-} from '../../common/errors';
+import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '../../common/errors';
 
 export const KhataService = {
   // ── Accounts ──────────────────────────────────────────────────────────────
 
-  async createAccount(vendorUserId: string, farmerId: string, data: {
-    creditLimitAmount: number;
-    interestRatePct?: number;
-    creditPeriodDays?: number;
-  }) {
+  async createAccount(
+    vendorUserId: string,
+    farmerId: string,
+    data: {
+      creditLimitAmount: number;
+      interestRatePct?: number;
+      creditPeriodDays?: number;
+    },
+  ) {
     const vendor = await prisma.vendor.findUnique({ where: { userId: vendorUserId } });
     if (!vendor) throw new ForbiddenError('Vendor profile not found');
 
@@ -34,17 +33,24 @@ export const KhataService = {
         interestRatePct: new Prisma.Decimal(data.interestRatePct ?? 0),
         creditPeriodDays: data.creditPeriodDays ?? 30,
       },
-      include: { vendor: { select: { businessName: true } }, farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } } },
+      include: {
+        vendor: { select: { businessName: true } },
+        farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
+      },
     });
   },
 
-  async getAccounts(requesterId: string, requesterRole: string, filters: {
-    page: number;
-    limit: number;
-    status?: KhataStatus;
-    farmerId?: string;
-    vendorId?: string;
-  }) {
+  async getAccounts(
+    requesterId: string,
+    requesterRole: string,
+    filters: {
+      page: number;
+      limit: number;
+      status?: KhataStatus;
+      farmerId?: string;
+      vendorId?: string;
+    },
+  ) {
     const { page, limit, status, farmerId, vendorId } = filters;
     const skip = (page - 1) * limit;
 
@@ -96,12 +102,17 @@ export const KhataService = {
     return account;
   },
 
-  async updateAccount(id: string, requesterId: string, requesterRole: string, data: {
-    creditLimitAmount?: number;
-    interestRatePct?: number;
-    creditPeriodDays?: number;
-    status?: KhataStatus;
-  }) {
+  async updateAccount(
+    id: string,
+    requesterId: string,
+    requesterRole: string,
+    data: {
+      creditLimitAmount?: number;
+      interestRatePct?: number;
+      creditPeriodDays?: number;
+      status?: KhataStatus;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id },
       include: { vendor: { select: { userId: true } } },
@@ -124,14 +135,19 @@ export const KhataService = {
 
   // ── Transactions ──────────────────────────────────────────────────────────
 
-  async addTransaction(accountId: string, performerId: string, performerRole: string, data: {
-    type: KhataTransactionType;
-    amount: number;
-    linkedOrderId?: string;
-    remarks?: string;
-    proofImageUrl?: string;
-    upiTransactionId?: string;
-  }) {
+  async addTransaction(
+    accountId: string,
+    performerId: string,
+    performerRole: string,
+    data: {
+      type: KhataTransactionType;
+      amount: number;
+      linkedOrderId?: string;
+      remarks?: string;
+      proofImageUrl?: string;
+      upiTransactionId?: string;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id: accountId },
       include: { vendor: { select: { userId: true } } },
@@ -148,9 +164,7 @@ export const KhataService = {
 
     const amount = new Prisma.Decimal(data.amount);
     const isDebit = ['UDHAR_DIYA', 'INTEREST_LAGA', 'ORDER_LINKED'].includes(data.type);
-    const newOutstanding = isDebit
-      ? account.outstandingAmount.add(amount)
-      : account.outstandingAmount.sub(amount);
+    const newOutstanding = isDebit ? account.outstandingAmount.add(amount) : account.outstandingAmount.sub(amount);
 
     if (isDebit && newOutstanding.gt(account.creditLimitAmount)) {
       throw new BadRequestError(`Transaction would exceed credit limit of ₹${account.creditLimitAmount}`);
@@ -187,11 +201,16 @@ export const KhataService = {
     return transaction;
   },
 
-  async getTransactions(accountId: string, requesterId: string, requesterRole: string, filters: {
-    page: number;
-    limit: number;
-    type?: KhataTransactionType;
-  }) {
+  async getTransactions(
+    accountId: string,
+    requesterId: string,
+    requesterRole: string,
+    filters: {
+      page: number;
+      limit: number;
+      type?: KhataTransactionType;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id: accountId },
       include: { vendor: { select: { userId: true } }, farmer: { select: { userId: true } } },
@@ -214,10 +233,15 @@ export const KhataService = {
 
   // ── Credit Requests ───────────────────────────────────────────────────────
 
-  async getRequests(accountId: string, requesterId: string, requesterRole: string, filters: {
-    page: number;
-    limit: number;
-  }) {
+  async getRequests(
+    accountId: string,
+    requesterId: string,
+    requesterRole: string,
+    filters: {
+      page: number;
+      limit: number;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id: accountId },
       include: { vendor: { select: { userId: true } }, farmer: { select: { userId: true } } },
@@ -237,10 +261,14 @@ export const KhataService = {
     return { requests, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
-  async createRequest(accountId: string, farmerUserId: string, data: {
-    requestedLimit: number;
-    reason?: string;
-  }) {
+  async createRequest(
+    accountId: string,
+    farmerUserId: string,
+    data: {
+      requestedLimit: number;
+      reason?: string;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id: accountId },
       include: { farmer: { select: { userId: true } } },
@@ -265,10 +293,15 @@ export const KhataService = {
     });
   },
 
-  async reviewRequest(requestId: string, reviewerId: string, reviewerRole: string, data: {
-    status: 'APPROVED' | 'REJECTED';
-    reviewNote?: string;
-  }) {
+  async reviewRequest(
+    requestId: string,
+    reviewerId: string,
+    reviewerRole: string,
+    data: {
+      status: 'APPROVED' | 'REJECTED';
+      reviewNote?: string;
+    },
+  ) {
     const request = await prisma.khataRequest.findUnique({
       where: { id: requestId },
       include: { khataAccount: { include: { vendor: { select: { userId: true } } } } },
@@ -337,10 +370,15 @@ export const KhataService = {
     return statement;
   },
 
-  async generateStatement(accountId: string, requesterId: string, requesterRole: string, data: {
-    periodStart: Date;
-    periodEnd: Date;
-  }) {
+  async generateStatement(
+    accountId: string,
+    requesterId: string,
+    requesterRole: string,
+    data: {
+      periodStart: Date;
+      periodEnd: Date;
+    },
+  ) {
     const account = await prisma.khataAccount.findUnique({
       where: { id: accountId },
       include: { vendor: { select: { userId: true } }, farmer: { select: { userId: true } } },
@@ -406,12 +444,7 @@ export const KhataService = {
     const accountWhere: Prisma.KhataAccountWhereInput = vendorId ? { vendorId } : {};
 
     // Aggregate all accounts
-    const [
-      accounts,
-      statusCounts,
-      totalOutstandingResult,
-      totalLimitResult,
-    ] = await Promise.all([
+    const [accounts, statusCounts, totalOutstandingResult, totalLimitResult] = await Promise.all([
       prisma.khataAccount.findMany({
         where: { ...accountWhere, status: 'OVERDUE', outstandingAmount: { gt: 0 } },
         orderBy: { dueDateNextPayment: 'asc' },
@@ -456,7 +489,7 @@ export const KhataService = {
 
     const totalCreditGiven = Number(creditTxns._sum.amount ?? 0);
     const totalRepaid = Number(repaymentTxns._sum.amount ?? 0);
-    const collectionRate = totalCreditGiven > 0 ? ((totalRepaid / totalCreditGiven) * 100) : 100;
+    const collectionRate = totalCreditGiven > 0 ? (totalRepaid / totalCreditGiven) * 100 : 100;
 
     // Status distribution map
     const statusMap: Record<string, number> = {
@@ -504,9 +537,7 @@ export const KhataService = {
         collectionRate: Math.round(collectionRate * 100) / 100,
         totalCreditGiven,
         totalRepaid,
-        utilizationRate: totalCreditLimit > 0
-          ? Math.round((totalOutstanding / totalCreditLimit) * 100 * 100) / 100
-          : 0,
+        utilizationRate: totalCreditLimit > 0 ? Math.round((totalOutstanding / totalCreditLimit) * 100 * 100) / 100 : 0,
       },
       statusDistribution: statusMap,
       overdueAccounts,
@@ -515,12 +546,16 @@ export const KhataService = {
 
   // ── Overdue Accounts ─────────────────────────────────────────────────────
 
-  async getOverdueAccounts(requesterId: string, requesterRole: string, filters: {
-    page: number;
-    limit: number;
-    farmerId?: string;
-    minDaysOverdue: number;
-  }) {
+  async getOverdueAccounts(
+    requesterId: string,
+    requesterRole: string,
+    filters: {
+      page: number;
+      limit: number;
+      farmerId?: string;
+      minDaysOverdue: number;
+    },
+  ) {
     const { page, limit, farmerId, minDaysOverdue } = filters;
     const skip = (page - 1) * limit;
 
@@ -588,45 +623,43 @@ export const KhataService = {
   // ── Admin Khata Overview ─────────────────────────────────────────────────
 
   async getAdminOverview() {
-    const [
-      totalAccounts,
-      statusCounts,
-      totalOutstandingResult,
-      totalLimitResult,
-      overdueAccounts,
-      vendorStats,
-    ] = await Promise.all([
-      prisma.khataAccount.count(),
-      prisma.khataAccount.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-      prisma.khataAccount.aggregate({
-        _sum: { outstandingAmount: true },
-      }),
-      prisma.khataAccount.aggregate({
-        _sum: { creditLimitAmount: true },
-      }),
-      prisma.khataAccount.findMany({
-        where: { status: 'OVERDUE', outstandingAmount: { gt: 0 } },
-        orderBy: { dueDateNextPayment: 'asc' },
-        take: 20,
-        include: {
-          vendor: { select: { businessName: true } },
-          farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
-        },
-      }),
-      prisma.khataAccount.groupBy({
-        by: ['vendorId'],
-        _count: true,
-        _sum: { outstandingAmount: true, creditLimitAmount: true },
-        orderBy: { _sum: { outstandingAmount: 'desc' } },
-        take: 20,
-      }),
-    ]);
+    const [totalAccounts, statusCounts, totalOutstandingResult, totalLimitResult, overdueAccounts, vendorStats] =
+      await Promise.all([
+        prisma.khataAccount.count(),
+        prisma.khataAccount.groupBy({
+          by: ['status'],
+          _count: true,
+        }),
+        prisma.khataAccount.aggregate({
+          _sum: { outstandingAmount: true },
+        }),
+        prisma.khataAccount.aggregate({
+          _sum: { creditLimitAmount: true },
+        }),
+        prisma.khataAccount.findMany({
+          where: { status: 'OVERDUE', outstandingAmount: { gt: 0 } },
+          orderBy: { dueDateNextPayment: 'asc' },
+          take: 20,
+          include: {
+            vendor: { select: { businessName: true } },
+            farmer: { select: { user: { select: { fullName: true, phoneNumber: true } } } },
+          },
+        }),
+        prisma.khataAccount.groupBy({
+          by: ['vendorId'],
+          _count: true,
+          _sum: { outstandingAmount: true, creditLimitAmount: true },
+          orderBy: { _sum: { outstandingAmount: 'desc' } },
+          take: 20,
+        }),
+      ]);
 
     const statusMap: Record<string, number> = {
-      ACTIVE: 0, SETTLED: 0, OVERDUE: 0, SUSPENDED: 0, WRITTEN_OFF: 0,
+      ACTIVE: 0,
+      SETTLED: 0,
+      OVERDUE: 0,
+      SUSPENDED: 0,
+      WRITTEN_OFF: 0,
     };
     for (const row of statusCounts) {
       statusMap[row.status] = row._count;
@@ -636,17 +669,17 @@ export const KhataService = {
     const totalCreditLimit = Number(totalLimitResult._sum.creditLimitAmount ?? 0);
 
     // Get vendor names for vendor stats
-    const vendorIds = vendorStats.map(v => v.vendorId);
+    const vendorIds = vendorStats.map((v) => v.vendorId);
     const vendors = await prisma.vendor.findMany({
       where: { id: { in: vendorIds } },
       select: { id: true, businessName: true },
     });
-    const vendorMap = new Map(vendors.map(v => [v.id, v.businessName]));
+    const vendorMap = new Map(vendors.map((v) => [v.id, v.businessName]));
 
     const now = new Date();
     const nowMs = now.getTime();
 
-    const overdueList = overdueAccounts.map(a => ({
+    const overdueList = overdueAccounts.map((a) => ({
       id: a.id,
       vendorName: a.vendor?.businessName ?? 'Unknown',
       farmerName: a.farmer?.user.fullName ?? 'Unknown',
@@ -657,7 +690,7 @@ export const KhataService = {
         : 0,
     }));
 
-    const vendorBreakdown = vendorStats.map(v => ({
+    const vendorBreakdown = vendorStats.map((v) => ({
       vendorId: v.vendorId,
       businessName: vendorMap.get(v.vendorId) ?? 'Unknown',
       accountCount: v._count,
@@ -671,9 +704,7 @@ export const KhataService = {
         totalOutstanding,
         totalCreditLimit,
         totalOverdueAccounts: statusMap.OVERDUE,
-        utilizationRate: totalCreditLimit > 0
-          ? Math.round((totalOutstanding / totalCreditLimit) * 100 * 100) / 100
-          : 0,
+        utilizationRate: totalCreditLimit > 0 ? Math.round((totalOutstanding / totalCreditLimit) * 100 * 100) / 100 : 0,
         avgOutstanding: totalAccounts > 0 ? Math.round(totalOutstanding / totalAccounts) : 0,
       },
       statusDistribution: statusMap,
@@ -740,12 +771,8 @@ export const KhataService = {
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
       const monthLabel = monthStart.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 
-      const monthDebits = debitTxns.filter(
-        (tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd
-      );
-      const monthRepays = repayTxns.filter(
-        (tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd
-      );
+      const monthDebits = debitTxns.filter((tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd);
+      const monthRepays = repayTxns.filter((tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd);
 
       monthlyData.push({
         month: monthLabel,
@@ -772,14 +799,11 @@ export const KhataService = {
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
       const monthLabel = monthStart.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 
-      const monthDebits = debitTxns.filter(
-        (tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd
-      );
-      const monthRepays = repayTxns.filter(
-        (tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd
-      );
-      const net = monthDebits.reduce((s, tx) => s + Number(tx.amount), 0)
-        - monthRepays.reduce((s, tx) => s + Number(tx.amount), 0);
+      const monthDebits = debitTxns.filter((tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd);
+      const monthRepays = repayTxns.filter((tx) => tx.createdAt >= monthStart && tx.createdAt <= monthEnd);
+      const net =
+        monthDebits.reduce((s, tx) => s + Number(tx.amount), 0) -
+        monthRepays.reduce((s, tx) => s + Number(tx.amount), 0);
 
       tempNetByMonth.push({ month: monthLabel, net });
     }
@@ -789,7 +813,7 @@ export const KhataService = {
     let runningBalance = Math.max(0, currentOutstanding - totalNet);
 
     // Walk forward: add each month's net to get outstanding at end of that month
-    const outstandingTrend = tempNetByMonth.map(m => {
+    const outstandingTrend = tempNetByMonth.map((m) => {
       runningBalance += m.net;
       return { month: m.month, netOutstanding: Math.round(Math.max(0, runningBalance)) };
     });

@@ -30,7 +30,11 @@ async function testRedisConnection(): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    try { await testClient.quit(); } catch { /* ignore */ }
+    try {
+      await testClient.quit();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -70,8 +74,13 @@ export async function initQueues(): Promise<void> {
       console.warn('[QUEUES] No REDIS_URL set — BullMQ queues will not be available. In-memory fallback used.');
     }
     queues = {
-      email: null, sms: null, push: null,
-      interest: null, statement: null, settlement: null, invoice: null,
+      email: null,
+      sms: null,
+      push: null,
+      interest: null,
+      statement: null,
+      settlement: null,
+      invoice: null,
     };
     return;
   }
@@ -143,7 +152,7 @@ const JOB_OPTIONS = {
   attempts: 3,
   backoff: { type: 'exponential' as const, delay: 5000 },
   removeOnComplete: { age: 3600 * 24 * 7 }, // Keep for 7 days
-  removeOnFail: { age: 3600 * 24 * 30 },    // Keep failures for 30 days
+  removeOnFail: { age: 3600 * 24 * 30 }, // Keep failures for 30 days
 };
 
 export async function addJob<T>(

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { prisma } from "../../common/lib/prisma";
+import { prisma } from '../../common/lib/prisma';
 import { hashPassword, comparePassword } from '../../common/utils/passwordUtils';
 import { getUserAuthStatus, isAccessAllowed } from '../../common/lib/userAuthState';
 import { logOtpForDev } from '../../common/utils/otpLog';
@@ -98,8 +98,7 @@ export class AuthService {
 
     const user = await prisma.user.findUnique({ where: { phoneNumber } });
     if (!user || !user.passwordHash) throw new UnauthorizedError('Invalid credentials');
-    if (user.status === 'DELETED' || user.status === 'BLOCKED')
-      throw new ForbiddenError('Account is not accessible');
+    if (user.status === 'DELETED' || user.status === 'BLOCKED') throw new ForbiddenError('Account is not accessible');
 
     const valid = await comparePassword(password, user.passwordHash);
     if (!valid) throw new UnauthorizedError('Invalid credentials');
@@ -142,8 +141,7 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     const session = await prisma.session.findUnique({ where: { refreshToken } });
-    if (!session || session.expiresAt < new Date())
-      throw new UnauthorizedError('Invalid or expired refresh token');
+    if (!session || session.expiresAt < new Date()) throw new UnauthorizedError('Invalid or expired refresh token');
 
     const payload = verifyToken(refreshToken, getRefreshSecret());
     if (!payload) throw new UnauthorizedError('Invalid refresh token');
@@ -175,7 +173,11 @@ export class AuthService {
     // Enqueue SMS job via BullMQ if SMS is enabled, otherwise log
     if (process.env.SMS_ENABLED === 'true') {
       const { JobQueue } = await import('../../jobs/queues');
-      await JobQueue.sms({ to: phoneNumber, message: `Your OTP is ${otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes.`, templateName: 'OTP' });
+      await JobQueue.sms({
+        to: phoneNumber,
+        message: `Your OTP is ${otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes.`,
+        templateName: 'OTP',
+      });
     } else {
       logOtpForDev(phoneNumber, otp);
     }
@@ -188,8 +190,7 @@ export class AuthService {
     });
 
     if (!record) throw new BadRequestError('OTP expired or not found');
-    if (record.attempts >= MAX_OTP_ATTEMPTS)
-      throw new TooManyRequestsError('Too many attempts. Request a new OTP.');
+    if (record.attempts >= MAX_OTP_ATTEMPTS) throw new TooManyRequestsError('Too many attempts. Request a new OTP.');
 
     const valid = await comparePassword(otp, record.otpHash);
     if (!valid) {
@@ -228,8 +229,7 @@ export class AuthService {
     });
 
     if (!record) throw new BadRequestError('OTP expired or not found');
-    if (record.attempts >= MAX_OTP_ATTEMPTS)
-      throw new TooManyRequestsError('Too many attempts. Request a new OTP.');
+    if (record.attempts >= MAX_OTP_ATTEMPTS) throw new TooManyRequestsError('Too many attempts. Request a new OTP.');
 
     const valid = await comparePassword(otp, record.otpHash);
     if (!valid) {
