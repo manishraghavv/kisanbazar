@@ -542,3 +542,35 @@ This project is licensed under the ISC License — see the [LICENSE](LICENSE) fi
   `backend/src/jobs/cron.ts` (`runInterestCalculation`), `backend/tests/integration/interest.test.ts`.
 - A daily job (`CRON_RECONCILE_SCHEDULE`, default `30 2 * * *`) and the admin endpoint
   `GET /api/admin/reconciliation/khata` compare every account's `outstandingAmount` with the sum of its ledger entries.
+
+## Orders, GST, invoices and returns (how money and documents work)
+
+**One checkout, one sub-order per vendor.** A customer pays once, but each vendor gets its own *sub-order*
+(`KB-2026-000123-1`, `-2`, …) that it alone can confirm, pack, ship, cancel/reject, invoice and be paid for. The parent
+order's status is derived from its sub-orders (the least advanced active sub-order decides; "delivered" only when every
+vendor delivered). Vendors can read and change **only their own** sub-orders and shipments.
+
+**GST** (`backend/src/modules/gst/gst.ts`, pure and unit-tested):
+- Prices are GST-exclusive. Taxable value of a line = unit price × quantity − its share of the coupon discount.
+- Same state (seller state = the buyer address's state) → CGST + SGST, each at half the rate; different state → IGST at
+  the full rate. Every address and every vendor carries a GST state code (`GET`-able list in `gst/states.ts`).
+- Rounding is per line, to 2 decimals, half-up; CGST and SGST are rounded independently from the half rate; sub-order and
+  order totals are plain sums of the rounded lines. Discounts are allocated across lines with the largest-remainder method,
+  so allocated parts always add up to the discount exactly. The delivery charge carries no GST (assumption).
+- Delivery: free per sub-order at or above `DELIVERY_FREE_THRESHOLD` (₹500), otherwise `DELIVERY_CHARGE` (₹40);
+  `FREE_DELIVERY` coupons waive it. `POST /api/orders/quote` returns the full per-seller breakdown without placing anything.
+
+**Coupons** can be scoped to one vendor (`applicableTo = VENDOR`) and have a total limit and a per-user limit
+(`perUserLimit`, enforced under the coupon row lock and by a unique `(coupon, user, seq)` constraint).
+
+**Khata credit** is applied per vendor: each vendor's sub-order is posted to the farmer's khata with *that* vendor, all in the
+same transaction (one vendor over limit ⇒ the whole checkout rolls back).
+
+**Invoices:** a tax invoice is issued per sub-order when it is shipped; numbers are gapless per vendor, per financial year
+(1 Apr–31 Mar, IST), e.g. `V001/2627/000001` (≤ 16 characters, GST rule 46). Credit notes use their own series
+(`V001C/2627/00001`). PDFs: `GET /api/sub-orders/:id/invoice`, `GET /api/invoices/:id/pdf`.
+
+**Returns:** `REQUESTED → APPROVED → RECEIVED → REFUNDED | CREDITED` (or `REJECTED`), per sub-order, within
+`RETURN_WINDOW_DAYS` (default 7) of delivery. Resolving issues the credit note and returns the money: online payments through
+the Razorpay refund API, wallet and COD to the customer's wallet, khata orders with a *reversing* ledger entry (old entries are
+never edited). The delivery charge is not refunded.
