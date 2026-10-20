@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useAdminStore } from "@/stores/adminStore";
 import { toast } from "sonner";
 import {
@@ -17,7 +17,7 @@ import {
   Clock,
   Eye,
 } from "lucide-react";
-import type { UserRole, UserStatus, UserListItem } from "@/types/auth";
+import type { UserStatus } from "@/types/auth";
 
 const ROLE_COLORS: Record<string, string> = {
   FARMER: "bg-emerald-50 dark:bg-emerald-900/30 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300",

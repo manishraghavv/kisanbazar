@@ -1,20 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useAdminStore } from "@/stores/adminStore";
 import { toast } from "sonner";
-import {
-  ShieldCheck,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  ChevronLeft,
-  ChevronRight,
-  Package,
-  Eye,
-  ThumbsUp,
-  ThumbsDown,
-} from "lucide-react";
+import { ShieldCheck, Loader2, XCircle, ChevronLeft, ChevronRight, Package, Eye, ThumbsUp, ThumbsDown } from "lucide-react";
 import type { ProductListItem } from "@/types/auth";
 
 function formatDate(dateStr: string) {

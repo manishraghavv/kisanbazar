@@ -13,7 +13,6 @@ import {
   Eye,
 } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/cn";
 import type { ProductListItem } from "@/types/auth";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

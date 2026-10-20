@@ -1,20 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useReportStore } from "@/stores/reportStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
-import {
-  BarChart3,
-  TrendingUp,
-  AlertTriangle,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  IndianRupee,
-  Package,
-  Users,
-} from "lucide-react";
+import { BarChart3, TrendingUp, AlertTriangle, Loader2, ChevronLeft, ChevronRight, IndianRupee, Package } from "lucide-react";
 
 function formatCurrency(amount: number) {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -49,7 +39,7 @@ export default function ReportsPage() {
   }, [activeTab]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+   
   useEffect(() => {
     if (activeTab === "sales") {
       fetchSalesReport(currentPage, 20).catch(() => toast.error("Failed to load sales report"));
@@ -59,7 +49,7 @@ export default function ReportsPage() {
       fetchKhataOverdue(currentPage, 20, minOverdueDays).catch(() => toast.error("Failed to load overdue report"));
     }
   }, [activeTab, currentPage, minOverdueDays, fetchSalesReport, fetchProductPerformance, fetchKhataOverdue]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+   
 
   const totalPagesNum = Math.max(1, Math.ceil(total / 20));
 

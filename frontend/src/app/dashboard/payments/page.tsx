@@ -4,23 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
-import {
-  CreditCard,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  RotateCcw,
-  RefreshCw,
-  Eye,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  IndianRupee,
-  Ban,
-  Receipt,
-  ArrowRight,
-} from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, XCircle, Clock, RotateCcw, RefreshCw, Eye, X, ChevronLeft, ChevronRight, Ban, Receipt, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { PaymentListItem } from "@/types/auth";
 
@@ -392,11 +376,11 @@ export default function PaymentsPage() {
     [getPayments],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+   
   useEffect(() => {
     loadPayments(currentPage, statusFilter);
   }, [currentPage, statusFilter, loadPayments]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+   
 
   const handlePageChange = (p: number) => {
     if (p < 1) return;

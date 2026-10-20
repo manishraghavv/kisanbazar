@@ -81,7 +81,7 @@ const initialState: ProductCatalogState = {
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useProductCatalogStore = create<ProductCatalogStore>()((set, get) => ({
+export const useProductCatalogStore = create<ProductCatalogStore>()((set) => ({
   // ── State ────────────────────────────────────────────────────────────────
   ...initialState,
 

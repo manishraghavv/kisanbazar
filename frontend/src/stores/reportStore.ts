@@ -42,7 +42,7 @@ const initialState: ReportState = {
   activeTab: "sales",
 };
 
-export const useReportStore = create<ReportStore>()((set, get) => ({
+export const useReportStore = create<ReportStore>()((set) => ({
   ...initialState,
 
   setActiveTab: (tab) => set({ activeTab: tab }),

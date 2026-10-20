@@ -35,7 +35,7 @@ export const registerSchema = z
     confirmPassword: z
       .string()
       .min(6, "Please confirm your password"),
-    role: z.enum(["FARMER", "VENDOR", "ADMIN", "DELIVERY"]),
+    role: z.enum(["FARMER", "VENDOR"]), // ADMIN/DELIVERY accounts are not self-registered (backend enforces this too)
     referralCode: z.string().optional().or(z.literal("")),
   })
   .refine((data) => data.password === data.confirmPassword, {

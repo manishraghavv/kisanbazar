@@ -4,29 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useKhataStore } from "@/stores/khataStore";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
-import {
-  BookOpen,
-  Loader2,
-  ArrowUpRight,
-  ArrowDownLeft,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Ban,
-  Eye,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  IndianRupee,
-  AlertTriangle,
-  Percent,
-  CalendarDays,
-  Plus,
-  Search,
-  UserPlus,
-  User,
-} from "lucide-react";
-import type { KhataAccountStatus, KhataTransactionType } from "@/types/auth";
+import { BookOpen, Loader2, ArrowUpRight, ArrowDownLeft, AlertCircle, CheckCircle2, Clock, Ban, Eye, X, ChevronLeft, ChevronRight, AlertTriangle, Percent, CalendarDays, Plus, Search, UserPlus, User } from "lucide-react";
 
 // ─── Status config ───────────────────────────────────────────────────────────
 
@@ -601,7 +579,7 @@ export default function KhataPage() {
     [getAccounts],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+   
   useEffect(() => {
     loadAccounts(currentPage);
   }, [currentPage, loadAccounts]);

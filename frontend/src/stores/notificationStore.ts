@@ -41,7 +41,7 @@ const initialState: NotificationState = {
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useNotificationStore = create<NotificationStore>()((set, get) => ({
+export const useNotificationStore = create<NotificationStore>()((set) => ({
   ...initialState,
 
   fetchNotifications: async (page = 1, limit = 20, filter) => {

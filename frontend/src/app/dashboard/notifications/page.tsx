@@ -3,22 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { toast } from "sonner";
-import {
-  Bell,
-  Loader2,
-  CheckCheck,
-  Trash2,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Package,
-  BookOpen,
-  Percent,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  ArrowRight,
-} from "lucide-react";
+import { Bell, Loader2, CheckCheck, Trash2, ChevronLeft, ChevronRight, Package, BookOpen, Percent, CheckCircle2, Info, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { NotificationType } from "@/types/auth";
 

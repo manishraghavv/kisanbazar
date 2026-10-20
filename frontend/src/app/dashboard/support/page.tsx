@@ -3,23 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTicketStore } from "@/stores/ticketStore";
 import { toast } from "sonner";
-import {
-  LifeBuoy,
-  Loader2,
-  Plus,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  ArrowUpRight,
-  Eye,
-  MessageSquare,
-  ArrowLeft,
-} from "lucide-react";
+import { LifeBuoy, Loader2, Plus, X, ChevronLeft, ChevronRight, Send, Clock, CheckCircle2, AlertCircle, Eye, MessageSquare } from "lucide-react";
 import type { SupportTicket, TicketMessage } from "@/types/auth";
 
 // ─── Status config ───────────────────────────────────────────────────────────
@@ -151,9 +135,9 @@ function TicketDetailDrawer({
   const [sendingReply, setSendingReply] = useState(false);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+     
     fetchTicketById(ticketId).finally(() => setLoading(false));
-    /* eslint-enable react-hooks/set-state-in-effect */
+     
   }, [ticketId, fetchTicketById]);
 
   const handleSendReply = async () => {
@@ -492,9 +476,9 @@ export default function SupportPage() {
   );
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+     
     loadTickets(currentPage, statusFilter);
-    /* eslint-enable react-hooks/set-state-in-effect */
+     
   }, [currentPage, statusFilter, loadTickets]);
 
   const handlePageChange = (p: number) => {

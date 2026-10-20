@@ -9,24 +9,7 @@ import { useCartStore } from "@/stores/cartStore";
 import { useWishlistStore } from "@/stores/wishlistStore";
 import apiClient from "@/lib/api-client";
 import ProductReviews from "@/components/reviews/ProductReviews";
-import {
-  Loader2,
-  Package,
-  ShoppingCart,
-  Check,
-  Heart,
-  Store,
-  ArrowLeft,
-  Tag,
-  Ruler,
-  Hash,
-  Percent,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Loader2, Package, ShoppingCart, Check, Heart, Store, ArrowLeft, Tag, Ruler, Hash, Percent, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { BackButton } from "@/components/ui/BackButton";
 import type { ProductDetail } from "@/types/auth";

@@ -1,23 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useCouponStore } from "@/stores/couponStore";
 import type { CreateCouponPayload } from "@/types/auth";
 import { toast } from "sonner";
-import {
-  Tag,
-  Loader2,
-  Plus,
-  Edit3,
-  Trash2,
-  X,
-  Save,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
+import { Tag, Loader2, Plus, Edit3, Trash2, X, Save, ChevronLeft, ChevronRight } from "lucide-react";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });

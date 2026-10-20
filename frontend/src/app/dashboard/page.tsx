@@ -5,20 +5,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { toast } from "sonner";
-import {
-  User,
-  MapPin,
-  ShoppingCart,
-  Heart,
-  Package,
-  ShoppingBag,
-  Bell,
-  IndianRupee,
-  Loader2,
-  Users,
-  TrendingUp,
-  BookOpen,
-} from "lucide-react";
+import { User, MapPin, ShoppingCart, Heart, Package, ShoppingBag, Bell, IndianRupee, Users, TrendingUp, BookOpen } from "lucide-react";
 import Link from "next/link";
 
 // ─── Quick link cards for all created pages ──────────────────────────────────

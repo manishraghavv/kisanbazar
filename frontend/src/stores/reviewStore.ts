@@ -31,7 +31,7 @@ interface ReviewActions {
 
 type ReviewStore = ReviewState & ReviewActions;
 
-export const useReviewStore = create<ReviewStore>()((set, get) => ({
+export const useReviewStore = create<ReviewStore>()((set) => ({
   reviews: {},
   totals: {},
   avgRatings: {},

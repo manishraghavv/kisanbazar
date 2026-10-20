@@ -5,23 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import apiClient from "@/lib/api-client";
 import { toast } from "sonner";
-import {
-  Settings,
-  User,
-  Save,
-  Loader2,
-  Phone,
-  Mail,
-  Globe,
-  Shield,
-  Download,
-  CheckCircle2,
-  Smartphone,
-  ArrowRight,
-  ArrowLeft,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
+import { User, Save, Loader2, Phone, Mail, Globe, Shield, Download, CheckCircle2, Smartphone, ArrowRight, ArrowLeft, Trash2, AlertTriangle } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();

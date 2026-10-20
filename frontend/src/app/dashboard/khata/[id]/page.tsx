@@ -32,13 +32,7 @@ import {
   Save,
 } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
-import type {
-  KhataAccount,
-  KhataTransaction,
-  KhataRequest,
-  KhataAccountStatus,
-  KhataTransactionType,
-} from "@/types/auth";
+import type { KhataAccount, KhataTransaction, KhataRequest, KhataTransactionType } from "@/types/auth";
 
 // ─── Status config ───────────────────────────────────────────────────────────
 

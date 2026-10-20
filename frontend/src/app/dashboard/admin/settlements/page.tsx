@@ -4,19 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
-import {
-  Landmark,
-  Loader2,
-  Plus,
-  CheckCircle2,
-  Clock,
-  Ban,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  IndianRupee,
-  Banknote,
-} from "lucide-react";
+import { Landmark, Loader2, Plus, CheckCircle2, Clock, Ban, X, ChevronLeft, ChevronRight, Banknote } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

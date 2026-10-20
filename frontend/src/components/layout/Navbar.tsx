@@ -23,7 +23,6 @@ import {
   Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Theme } from "@/stores/uiStore";
 
 export function Navbar() {
   const { user, logout } = useAuthStore();

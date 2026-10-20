@@ -26,7 +26,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
-import type { KhataAccount, CouponItem } from "@/types/auth";
+import type { CouponItem } from "@/types/auth";
 
 // ─── Payment methods ─────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ export default function CheckoutPage() {
 
   // ── Computed values ──
 
-  const items = cart?.items ?? [];
+  const items = useMemo(() => cart?.items ?? [], [cart]);
   const subtotal = useMemo(
     () => items.reduce((sum, item) => sum + item.variant.sellingPrice * item.quantity, 0),
     [items],
@@ -229,7 +229,8 @@ export default function CheckoutPage() {
     return 0;
   }, [appliedCoupon, subtotal]);
 
-  const deliveryCharge = subtotal >= 500 ? 0 : 40;
+  // Display estimate only: the server computes the authoritative delivery charge (same rule).
+  const deliveryCharge = subtotal >= 500 || appliedCoupon?.type === "FREE_DELIVERY" ? 0 : 40;
   const total = Math.max(0, subtotal - discountAmount + deliveryCharge);
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);

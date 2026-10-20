@@ -222,7 +222,7 @@ export default function AdminIndustriesPage() {
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadIndustries(1); }, [loadIndustries]);
 

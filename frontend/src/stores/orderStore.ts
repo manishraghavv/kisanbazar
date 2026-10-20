@@ -56,7 +56,7 @@ const initialState: OrderState = {
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useOrderStore = create<OrderStore>()((set, get) => ({
+export const useOrderStore = create<OrderStore>()((set) => ({
   // ── State ────────────────────────────────────────────────────────────────
   ...initialState,
 

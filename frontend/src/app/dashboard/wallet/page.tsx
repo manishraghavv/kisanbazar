@@ -3,22 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api-client";
-import {
-  Wallet,
-  Plus,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Loader2,
-  Eye,
-  EyeOff,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  IndianRupee,
-  CreditCard,
-  History,
-  Download,
-} from "lucide-react";
+import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Loader2, Eye, EyeOff, X, ChevronLeft, ChevronRight, CreditCard, History, Download } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

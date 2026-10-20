@@ -72,7 +72,7 @@ const initialState: VendorState = {
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useVendorStore = create<VendorStore>()((set, get) => ({
+export const useVendorStore = create<VendorStore>()((set) => ({
   ...initialState,
 
   // ── Inventory ──────────────────────────────────────────────────────────────

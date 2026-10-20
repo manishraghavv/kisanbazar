@@ -627,11 +627,11 @@ export default function OrdersPage() {
     [fetchOrders],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+   
   useEffect(() => {
     loadOrders(currentPage, statusFilter);
   }, [currentPage, statusFilter, loadOrders]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+   
 
   const handleFilterChange = (status: OrderStatus | "") => {
     setStatusFilter(status);

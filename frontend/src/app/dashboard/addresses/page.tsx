@@ -543,7 +543,7 @@ export default function AddressesPage() {
     fetchAddresses().catch(() => {
       toast.error("Failed to load addresses");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [fetchAddresses]);
 
   // UI state

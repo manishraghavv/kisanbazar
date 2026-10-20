@@ -26,7 +26,7 @@ import {
   Landmark,
   Download,
 } from "lucide-react";
-import type { KhataAccount, KhataTransaction, KhataAccountStatus } from "@/types/auth";
+import type { KhataAccount, KhataAccountStatus } from "@/types/auth";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

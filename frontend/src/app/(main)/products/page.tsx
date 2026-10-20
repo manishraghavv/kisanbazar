@@ -213,12 +213,12 @@ function ProductDetailDrawer({
   const [wishlistToggling, setWishlistToggling] = useState(false);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+     
     Promise.all([
       fetchProductById(productId),
       getWishlist(),
     ]).finally(() => setLoading(false));
-    /* eslint-enable react-hooks/set-state-in-effect */
+     
   }, [productId, fetchProductById, getWishlist]);
 
   if (loading || isProductLoading || !selectedProduct) {
@@ -632,7 +632,7 @@ export default function ProductsPage() {
   // Load categories on mount
   useEffect(() => {
     fetchCategories().catch(() => {});
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
   }, [fetchCategories]);
 
   // Build filter params
@@ -659,9 +659,9 @@ export default function ProductsPage() {
   }, [fetchProducts, filterParams]);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+     
     loadProducts();
-    /* eslint-enable react-hooks/set-state-in-effect */
+     
   }, [loadProducts]);
 
   // Clear all filters

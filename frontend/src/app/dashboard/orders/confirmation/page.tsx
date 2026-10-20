@@ -4,17 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import apiClient from "@/lib/api-client";
-import {
-  CheckCircle2,
-  Package,
-  ShoppingBag,
-  Loader2,
-  Sparkles,
-  IndianRupee,
-  Calendar,
-  Copy,
-  AlertTriangle,
-} from "lucide-react";
+import { CheckCircle2, Package, ShoppingBag, Loader2, Sparkles, Calendar, Copy, AlertTriangle } from "lucide-react";
 import type { OrderDetail } from "@/types/auth";
 
 function formatCurrency(amount: number) {
@@ -45,7 +35,7 @@ export default function OrderConfirmationPage() {
     if (!orderId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setError("No recent order found");
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setIsLoading(false);
       return;
     }

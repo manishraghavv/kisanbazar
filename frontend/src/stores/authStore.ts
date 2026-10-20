@@ -194,9 +194,13 @@ export const useAuthStore = create<AuthStore>()(
           });
 
           return true;
-        } catch {
-          // Refresh failed — clear everything
-          set({ ...initialState, isLoading: false });
+        } catch (error) {
+          // Only an explicit rejection of the refresh token ends the session; a network error or
+          // 5xx must not log the user out.
+          const status = (error as { response?: { status?: number } }).response?.status;
+          if (status === 400 || status === 401 || status === 403) {
+            set({ ...initialState, isLoading: false });
+          }
           return false;
         }
       },

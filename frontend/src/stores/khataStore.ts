@@ -72,7 +72,7 @@ const initialState: KhataState = {
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useKhataStore = create<KhataStore>()((set, get) => ({
+export const useKhataStore = create<KhataStore>()((set) => ({
   ...initialState,
 
   getAccounts: async (page = 1, limit = 20, status?: KhataAccountStatus) => {

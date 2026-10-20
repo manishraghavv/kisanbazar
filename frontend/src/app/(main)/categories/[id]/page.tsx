@@ -145,13 +145,13 @@ export default function CategoryProductsPage() {
 
   // Fetch category info
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+     
     apiClient
       .get<{ success: boolean; data: Category }>(`/categories/${categoryId}`)
       .then((res) => setCategory(res.data.data))
       .catch(() => toast.error("Failed to load category"))
       .finally(() => setCatLoading(false));
-    /* eslint-enable react-hooks/set-state-in-effect */
+     
   }, [categoryId]);
 
   // Fetch products with filters

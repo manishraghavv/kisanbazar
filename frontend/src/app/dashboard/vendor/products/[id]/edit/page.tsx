@@ -17,7 +17,7 @@ import {
   Sprout,
   AlertTriangle,
   Layers,
-  Image,
+  Image as ImageIcon,
   Settings2,
 } from "lucide-react";
 import type { Category, ProductDetail } from "@/types/auth";
@@ -273,7 +273,7 @@ export default function EditProductPage() {
           href={`/dashboard/vendor/products/${productId}/images`}
           className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 dark:border-gray-700 bg-white dark:bg-gray-800 dark:bg-gray-800 px-3.5 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 dark:text-gray-200 shadow-sm dark:shadow-gray-950/30 hover:border-emerald-200 dark:hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all"
         >
-          <Image size={14} />
+          <ImageIcon size={14} />
           Images ({product.images.length})
         </Link>
         <Link

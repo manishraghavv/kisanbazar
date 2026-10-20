@@ -3,19 +3,7 @@
 import { useEffect, useState } from "react";
 import { useCartStore } from "@/stores/cartStore";
 import { toast } from "sonner";
-import {
-  ShoppingCart,
-  ShoppingBag,
-  Plus,
-  Minus,
-  Trash2,
-  Loader2,
-  Package,
-  ArrowLeft,
-  IndianRupee,
-  ChevronRight,
-  Sparkles,
-} from "lucide-react";
+import { ShoppingCart, ShoppingBag, Plus, Minus, Trash2, Loader2, Package, ArrowLeft, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
