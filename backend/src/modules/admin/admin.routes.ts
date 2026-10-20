@@ -53,7 +53,7 @@ let bullBoardRouter: Router | null = null;
 
 // Wrapper middleware — delegates to Bull Board only once initialized
 // ADMIN-only: this mount sits above the router-level guards below, so it carries its own.
-router.use('/queues', authenticate, authorize('ADMIN'), (req: Request, res: Response, next: NextFunction) => {
+router.use('/admin/queues', authenticate, authorize('ADMIN'), (req: Request, res: Response, next: NextFunction) => {
   if (bullBoardRouter) {
     return bullBoardRouter(req, res, next);
   }
@@ -88,9 +88,9 @@ export async function initBullBoard(): Promise<void> {
   }
 }
 
-// All admin routes require authentication + admin role
-router.use(authenticate);
-router.use(authorize('ADMIN'));
+// All /admin routes require authentication + admin role. Scoped to the prefix: this router is
+// mounted at /api, so an unscoped router.use would gate every route mounted after it.
+router.use('/admin', authenticate, authorize('ADMIN'));
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CRON TRIGGERS
