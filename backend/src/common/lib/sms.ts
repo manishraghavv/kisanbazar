@@ -5,6 +5,8 @@
  * Falls back gracefully when credentials aren't configured.
  */
 
+import { describeSmsForLog } from '../utils/otpLog';
+
 // ── Config ───────────────────────────────────────────────────────────────────
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -34,7 +36,7 @@ function getClient() {
 export async function sendSms(to: string, message: string): Promise<boolean> {
   const client = getClient();
   if (!client) {
-    console.log(`[SMS-DEV] Would send SMS to ${to}: ${message.slice(0, 100)}`);
+    console.log(`[SMS-DEV] Would send SMS ${describeSmsForLog(to, message)}`);
     return false;
   }
 

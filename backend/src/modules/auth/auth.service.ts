@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from "../../common/lib/prisma";
 import { hashPassword, comparePassword } from '../../common/utils/passwordUtils';
+import { logOtpForDev } from '../../common/utils/otpLog';
 import { generateAccessToken, generateRefreshToken, verifyToken, getRefreshSecret } from '../../common/utils/jwtUtils';
 import {
   ConflictError,
@@ -174,7 +175,7 @@ export class AuthService {
       const { JobQueue } = await import('../../jobs/queues');
       await JobQueue.sms({ to: phoneNumber, message: `Your OTP is ${otp}. Valid for ${OTP_EXPIRY_MINUTES} minutes.`, templateName: 'OTP' });
     } else {
-      console.log(`[DEV] OTP for ${phoneNumber}: ${otp}`);
+      logOtpForDev(phoneNumber, otp);
     }
   }
 
