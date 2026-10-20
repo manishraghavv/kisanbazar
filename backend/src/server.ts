@@ -11,6 +11,7 @@ import { AppError } from './common/errors';
 import { asyncHandler } from './common/middleware/asyncHandler';
 import { metricsMiddleware, metricsHandler } from './common/middleware/metrics';
 import { generalLimiter } from './common/middleware/rateLimiter';
+import { apiDocsGate, requireMetricsAccess } from './common/middleware/opsAccess';
 import { corsOriginCheck } from './common/config/cors';
 import { initSocket } from './common/lib/socket';
 import { AuthRequest } from './common/types/express.d';
@@ -69,7 +70,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(metricsMiddleware);
 
 // API docs
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api/docs', apiDocsGate, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -106,7 +107,7 @@ app.post('/api/coupons/auto-apply', (req, res, next) => {
 });
 
 // ── Metrics Endpoint ────────────────────────────────────────────────────────
-app.get('/metrics', metricsHandler);
+app.get('/metrics', requireMetricsAccess, asyncHandler(metricsHandler));
 
 // ── Health Check ────────────────────────────────────────────────────────────
 app.get('/health', (req: Request, res: Response) => {

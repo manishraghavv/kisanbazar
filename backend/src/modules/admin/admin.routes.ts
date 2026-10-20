@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
 import { authenticate, authorize } from '../../common/middleware/authMiddleware';
+import { isBullBoardEnabled } from '../../common/middleware/opsAccess';
 import { asyncHandler } from '../../common/middleware/asyncHandler';
 import { AuthRequest } from '../../common/types/express.d';
 import {
@@ -51,7 +52,8 @@ import { ExpressAdapter } from '@bull-board/express';
 let bullBoardRouter: Router | null = null;
 
 // Wrapper middleware — delegates to Bull Board only once initialized
-router.use('/queues', (req: Request, res: Response, next: NextFunction) => {
+// ADMIN-only: this mount sits above the router-level guards below, so it carries its own.
+router.use('/queues', authenticate, authorize('ADMIN'), (req: Request, res: Response, next: NextFunction) => {
   if (bullBoardRouter) {
     return bullBoardRouter(req, res, next);
   }
@@ -60,6 +62,10 @@ router.use('/queues', (req: Request, res: Response, next: NextFunction) => {
 });
 
 export async function initBullBoard(): Promise<void> {
+  if (!isBullBoardEnabled()) {
+    console.log('[BULL-BOARD] Disabled in production (set ENABLE_BULL_BOARD=true to enable)');
+    return;
+  }
   try {
     const { queues: q } = await import('../../jobs/queues');
     const qMap: Record<string, unknown> = q || {};
