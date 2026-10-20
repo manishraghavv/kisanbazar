@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './common/config/bootEnv'; // loads + validates env; must stay the first import
 import { app, httpServer, PORT } from './server';
 import { prisma } from './common/lib/prisma';
 import { startCronJobs } from './jobs/cron';

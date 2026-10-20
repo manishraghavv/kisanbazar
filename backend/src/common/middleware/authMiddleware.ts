@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../utils/jwtUtils';
+import { verifyToken, getAccessSecret } from '../utils/jwtUtils';
 import { UserRole } from '@prisma/client';
 import { AuthRequest } from '../types/express.d';
 
@@ -12,7 +12,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
   }
 
   const token = authHeader.split(' ')[1];
-  const payload = verifyToken(token, process.env.JWT_ACCESS_SECRET || 'access_secret');
+  const payload = verifyToken(token, getAccessSecret());
 
   if (!payload) {
     res.status(401).json({ success: false, message: 'Invalid or expired token' });

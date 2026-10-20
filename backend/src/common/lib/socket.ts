@@ -13,7 +13,7 @@
 
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
-import { verifyToken } from '../utils/jwtUtils';
+import { verifyToken, getAccessSecret } from '../utils/jwtUtils';
 import { UserRole } from '@prisma/client';
 
 let io: SocketServer | null = null;
@@ -37,7 +37,7 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       return next();
     }
 
-    const payload = verifyToken(token as string, process.env.JWT_ACCESS_SECRET || 'access_secret');
+    const payload = verifyToken(token as string, getAccessSecret());
     if (!payload) {
       return next(new Error('Invalid token'));
     }

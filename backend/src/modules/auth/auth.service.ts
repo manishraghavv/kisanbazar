@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from "../../common/lib/prisma";
 import { hashPassword, comparePassword } from '../../common/utils/passwordUtils';
-import { generateAccessToken, generateRefreshToken, verifyToken } from '../../common/utils/jwtUtils';
+import { generateAccessToken, generateRefreshToken, verifyToken, getRefreshSecret } from '../../common/utils/jwtUtils';
 import {
   ConflictError,
   UnauthorizedError,
@@ -143,7 +143,7 @@ export class AuthService {
     if (!session || session.expiresAt < new Date())
       throw new UnauthorizedError('Invalid or expired refresh token');
 
-    const payload = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET || 'refresh_secret');
+    const payload = verifyToken(refreshToken, getRefreshSecret());
     if (!payload) throw new UnauthorizedError('Invalid refresh token');
 
     return { accessToken: generateAccessToken({ userId: payload.userId, role: payload.role }) };
