@@ -10,6 +10,7 @@ import { swaggerSpec } from './common/config/swagger';
 import { AppError } from './common/errors';
 import { asyncHandler } from './common/middleware/asyncHandler';
 import { metricsMiddleware, metricsHandler } from './common/middleware/metrics';
+import { corsOriginCheck } from './common/config/cors';
 import { initSocket } from './common/lib/socket';
 import { AuthRequest } from './common/types/express.d';
 import Joi from 'joi';
@@ -47,10 +48,7 @@ if (process.env.SENTRY_DSN) {
 
 // ── Global Middleware ───────────────────────────────────────────────────────
 app.use(helmet());
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
-  : '*';
-app.use(cors({ origin: corsOrigins }));
+app.use(cors({ origin: corsOriginCheck() }));
 app.use(morgan('dev'));
 // Gateway webhook needs the raw bytes for HMAC verification, so it is mounted with
 // express.raw() BEFORE the JSON body parser and before any auth-guarded router.

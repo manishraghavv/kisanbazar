@@ -13,16 +13,15 @@
 
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
+import { getAllowedOrigins } from '../config/cors';
 import { verifyToken, getAccessSecret } from '../utils/jwtUtils';
 import { UserRole } from '@prisma/client';
 
 let io: SocketServer | null = null;
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-
 export function initSocket(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
-    cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] },
+    cors: { origin: getAllowedOrigins(), methods: ['GET', 'POST'] },
     pingInterval: 25000,
     pingTimeout: 20000,
   });
