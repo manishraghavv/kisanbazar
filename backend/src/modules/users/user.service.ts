@@ -1,4 +1,5 @@
 import { comparePassword } from '../../common/utils/passwordUtils';
+import { revokeUserAccess } from '../../common/lib/userAuthState';
 import { prisma } from '../../common/lib/prisma';
 import {
   NotFoundError,
@@ -157,7 +158,7 @@ export class UserService {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundError('User not found');
 
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id },
       data: {
         ...(input.fullName && { fullName: input.fullName }),
@@ -174,6 +175,8 @@ export class UserService {
         status: true,
       },
     });
+    await revokeUserAccess(id, updated.status);
+    return updated;
   }
 
   async softDelete(id: string) {
@@ -184,6 +187,7 @@ export class UserService {
       where: { id },
       data: { deletedAt: new Date(), status: 'DELETED' },
     });
+    await revokeUserAccess(id, 'DELETED');
   }
 
   async updateFarmerProfile(userId: string, input: UpdateFarmerInput) {
@@ -259,6 +263,7 @@ export class UserService {
       where: { id: userId },
       data: { deletedAt: new Date(), status: 'DELETED' },
     });
+    await revokeUserAccess(userId, 'DELETED');
 
     return { message: 'Account deleted successfully' };
   }
@@ -268,7 +273,7 @@ export class UserService {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundError('User not found');
 
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id },
       data: { status: status as UserStatus },
       select: {
@@ -280,5 +285,7 @@ export class UserService {
         status: true,
       },
     });
+    await revokeUserAccess(id, updated.status);
+    return updated;
   }
 }

@@ -13,6 +13,7 @@
 
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
+import { getUserAuthStatus, isAccessAllowed } from './userAuthState';
 import { getAllowedOrigins } from '../config/cors';
 import { verifyToken, getAccessSecret } from '../utils/jwtUtils';
 import { UserRole } from '@prisma/client';
@@ -27,7 +28,7 @@ export function initSocket(httpServer: HttpServer): SocketServer {
   });
 
   // ── Authentication Middleware ──────────────────────────────────────────────
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
 
     if (!token) {
@@ -39,6 +40,12 @@ export function initSocket(httpServer: HttpServer): SocketServer {
     const payload = verifyToken(token as string, getAccessSecret());
     if (!payload) {
       return next(new Error('Invalid token'));
+    }
+
+    try {
+      if (!isAccessAllowed(await getUserAuthStatus(payload.userId))) return next(new Error('Account is not active'));
+    } catch {
+      return next(new Error('Authentication unavailable'));
     }
 
     (socket as any).user = { id: payload.userId, role: payload.role as UserRole };

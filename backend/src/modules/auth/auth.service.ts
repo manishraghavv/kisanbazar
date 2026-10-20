@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from "../../common/lib/prisma";
 import { hashPassword, comparePassword } from '../../common/utils/passwordUtils';
+import { getUserAuthStatus, isAccessAllowed } from '../../common/lib/userAuthState';
 import { logOtpForDev } from '../../common/utils/otpLog';
 import { generateAccessToken, generateRefreshToken, verifyToken, getRefreshSecret } from '../../common/utils/jwtUtils';
 import {
@@ -146,6 +147,7 @@ export class AuthService {
 
     const payload = verifyToken(refreshToken, getRefreshSecret());
     if (!payload) throw new UnauthorizedError('Invalid refresh token');
+    if (!isAccessAllowed(await getUserAuthStatus(payload.userId))) throw new UnauthorizedError('Account is not active');
 
     return { accessToken: generateAccessToken({ userId: payload.userId, role: payload.role }) };
   }

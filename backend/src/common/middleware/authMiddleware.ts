@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, getAccessSecret } from '../utils/jwtUtils';
 import { UserRole } from '@prisma/client';
+import { getUserAuthStatus, isAccessAllowed } from '../lib/userAuthState';
 import { AuthRequest } from '../types/express.d';
 
-export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith('Bearer ')) {
@@ -16,6 +17,20 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
   if (!payload) {
     res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    return;
+  }
+
+  // A valid JWT is not enough: BLOCKED / DELETED / unknown accounts lose access immediately.
+  let status;
+  try {
+    status = await getUserAuthStatus(payload.userId);
+  } catch (err) {
+    console.error('[AUTH] Account status lookup failed; denying request', (err as Error).message);
+    res.status(503).json({ success: false, message: 'Authentication temporarily unavailable' });
+    return;
+  }
+  if (!isAccessAllowed(status)) {
+    res.status(401).json({ success: false, message: 'Account is not active' });
     return;
   }
 
