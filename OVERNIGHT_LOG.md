@@ -70,3 +70,45 @@
 - ESLint warnings 125 → 62 (0 errors): removed 53 unused imports/vars/params, fixed alt-text false positives (lucide `Image` icon renamed), `useMemo` dep. **Not changed: 20 `<img>` → `next/image`** because product images are user-supplied URLs from unknown hosts (needs `images.remotePatterns` decided by you) and ~40 destructured-but-unused pagination values.
 - Review fixes: (1) session no longer wiped on a network/5xx error during silent refresh (only 400/401/403); (2) checkout delivery estimate honours FREE_DELIVERY coupons; (3) register role enum matches the backend (FARMER/VENDOR).
 - **Found, not fixed in Phase 1 (fixed server-side in Part B if reached):** checkout shows a ₹40 delivery charge for subtotal < ₹500 but the backend charged whatever the client sent (nothing) → displayed total ≠ charged total; no online payment step exists (Razorpay out of scope).
+
+## Part B — Phase 2 (money correctness) — branch `phase-2-money` (from `phase-1-stabilize`)
+
+Part A was fully green before starting (backend lint/tsc/build/tests, frontend lint/tsc/vitest/build, docker build + up, contract check).
+
+### B1. Khata ledger — DONE (72ef8dc schema, 368310e code)
+- `src/modules/khata/khata.ledger.ts` → `postKhataEntry(tx, …)` is now the ONLY writer of `outstandingAmount`: `SELECT … FOR UPDATE` on the account, `balanceAfter` computed from the locked row, entry + balance written in the caller's interactive transaction. `KhataService.addTransaction`, the order flow and the interest cron all go through it.
+- `idempotencyKey` (new nullable UNIQUE column on `khata_transactions`): a repeated key returns the original entry (`replayed: true`). The HTTP endpoint accepts an `Idempotency-Key` header or `idempotencyKey` body field (namespaced per account).
+- Status rules: a posting only moves ACTIVE↔SETTLED; it never overwrites OVERDUE/SUSPENDED (old code forced ACTIVE on every debit). A full repayment settles an OVERDUE account. SUSPENDED/WRITTEN_OFF still reject postings (unchanged). Credits larger than the balance are rejected (balance cannot go negative); interest may exceed the credit limit, other debits may not.
+- Due date: only UDHAR_DIYA/ORDER_LINKED restart the repayment clock; interest postings no longer push `dueDateNextPayment` out (old code did).
+- Interest cron: key `interest:<accountId>:<UTC date>` → running it twice in a day posts once; amount rounded to 2 dp.
+- `reconcileKhata(accountId?)`: compares `outstandingAmount` with the signed ledger sum (debits − credits), returns only mismatches. **Not wired to a cron/endpoint yet** (call it from a script/REPL or add an admin route); it is read-only.
+
+### B2. Order creation — DONE (1908956)
+- `OrderService.create` is a single interactive transaction (`maxWait 15s / timeout 30s`): (0) claim the cart items by deleting them (a double-submit/second tab now fails with 409 instead of ordering twice), (1) conditional stock decrement via `UPDATE … WHERE stock - reservedQty >= qty RETURNING sellingPrice` (price taken from the locked row; 0 rows ⇒ "Insufficient stock" and everything rolls back), (2) coupon `usedCount` conditional increment inside the same transaction (limit can't be exceeded; a failed order no longer burns a use), (3) khata/wallet legs under row locks, (4) the order, items, status history, vendor commissions.
+- `reservedQty`: no longer touched at checkout (stock is decremented immediately; the old code decremented a counter that nothing ever incremented and drove it negative). Availability is `stockQuantity - reservedQty`.
+- Delivery charge computed server-side (`orders/pricing.ts`): free at subtotal ≥ `DELIVERY_FREE_THRESHOLD` (default 500) or with a FREE_DELIVERY coupon, else `DELIVERY_CHARGE` (default 40) — the same rule the checkout page displays. `deliveryCharge` was removed from the request schema. Coupon discount is capped at the subtotal.
+- Order numbers come from a Postgres sequence (`order_number_seq`, new migration `20261020181000…`, initialised past the highest existing `KB-yyyy-nnnnnn`) — the old "read last + 1" gave concurrent checkouts the same number.
+- Khata checkout hardening (not asked, but it was a money hole): the khata account must belong to the caller's farmer profile, be ACTIVE, and every item must be sold by the khata's vendor (a vendor-A khata can no longer pay for vendor-B goods). **Behaviour change:** mixed-vendor carts can't be paid on khata.
+- `cancel()`: conditional status transition (two concurrent cancels ⇒ one wins), stock restored once, wallet refund / khata reversal once (idempotency keys). Khata reversal is clamped to what is still owed (a partly repaid order is not over-credited).
+- `InventoryService.adjust` (vendor stock adjustments) is now an atomic conditional update (was read-then-write) — aae3309.
+
+### B3. Wallet — DONE (58a4a35)
+- `payments/wallet.ledger.ts` `creditWallet/debitWallet`: lock the wallet row, then atomic `UPDATE … RETURNING` (debit carries `balance >= amount` in WHERE). Used by add-money, wallet payment, order wallet leg, cancel refund. Optional `idempotencyKey` (new column on `wallet_transactions`).
+
+### B4. CHECK constraints — DONE (72ef8dc), migration `20261020180000_money_integrity`
+- `outstandingAmount >= 0`, `stockQuantity >= 0`, `reservedQty >= 0`, `wallets.balance >= 0`. Safe on populated DBs: `reservedQty < 0` rows are reset to 0 (known artefact of the old bug); each constraint is added `NOT VALID` (enforced for all new writes immediately) and `VALIDATE`d only if no existing row violates it, otherwise a `WARNING` names the table. Tested on a scratch DB seeded with negative stock/wallet rows: migration succeeds, constraints stay NOT VALID for the dirty tables.
+- **Before production:** check the migration output for `WARNING … left NOT VALID` and repair those rows.
+
+### B5. Concurrency tests — DONE (96ff8dd, aae3309)
+`tests/integration/khataLedger.concurrency.test.ts`, `orders.concurrency.test.ts` on real Postgres, all passing:
+100 parallel khata debits → exact balance, distinct balanceAfter set, reconciles; limit 500 with 100×10 → exactly 50 succeed; mixed debits/repayments net exactly; idempotency key ×10 parallel → 1 entry; overpayment rejected; OVERDUE not overwritten; interest cron idempotent; reconciliation detects tampering; DB rejects negative outstanding/wallet/stock/reserved.
+50 parallel orders for stock 10 → exactly 10 succeed, stock 0; failed order rolls back stock/coupon/cart; coupon limit 5 with 20 parallel orders → exactly 5; same cart submitted 5× → 1 order; khata limit via orders; khata ownership/vendor checks; double-cancel; server delivery charge (client value ignored, negative ignored, free ≥ 500); 50 parallel wallet debits of 10 on 100 → exactly 10; parallel credits + idempotency; 20 parallel stock adjustments on 10 → exactly 10.
+
+### Not done / open risks (Part B)
+- **Not touched by design:** real Razorpay, GST split, sub-orders.
+- Wallet payment is still double-chargeable by flow design: `POST /orders` with `WALLET` debits immediately, and `POST /payments/initiate`/`/wallet/pay` with WALLET debits again for the same order (each leg is atomic, but nothing links them). Needs the payments redesign.
+- `POST /wallet/add-money` still credits without a verified gateway payment (audit item; out of scope).
+- Per-user coupon limits (`perUserLimit`), coupon scoping (`applicableTo`) are still not enforced.
+- Interest cron semantics unchanged: it skips accounts whose last transaction is within `INTEREST_GRACE_PERIOD_DAYS`, and each posting counts as a transaction, so with the default grace of 7 days interest effectively posts weekly at the *daily* rate. Looks like a pre-existing business-logic bug; I did not change the rate semantics.
+- Vendor-initiated `PUT /orders/:id/status` → CANCELLED/REFUNDED still does not reverse khata/restore stock (only the farmer cancel path does).
+- Lost-update protection for the cart quantity between read and claim is not handled (claim checks row identity, not quantity).
