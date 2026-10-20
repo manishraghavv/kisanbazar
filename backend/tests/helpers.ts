@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import { app } from '../src/server';
 import { prisma } from '../src/common/lib/prisma';
 import { hashPassword } from '../src/common/utils/passwordUtils';
@@ -109,4 +110,9 @@ export async function createKhataAccount(vendorId: string, farmerId: string, cre
   return prisma.khataAccount.create({
     data: { vendorId, farmerId, creditLimitAmount: creditLimit, interestRatePct: 12, creditPeriodDays: 30 },
   });
+}
+
+/** Signs an access token for a user created directly in the DB (no password round-trip). */
+export function tokenFor(userId: string, role: 'FARMER' | 'VENDOR' | 'ADMIN' = 'FARMER'): { accessToken: string } {
+  return { accessToken: jwt.sign({ userId, role }, process.env.JWT_ACCESS_SECRET!, { expiresIn: '10m' }) };
 }

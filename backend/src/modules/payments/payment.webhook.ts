@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
+import { prisma } from '../../common/lib/prisma';
 import { PaymentService } from './payment.service';
 
 /**
@@ -23,15 +24,25 @@ interface RazorpayPaymentEntity {
   order_id?: string;
   amount?: number;
   currency?: string;
+  method?: string;
   notes?: { paymentId?: string } | unknown[];
+}
+
+interface RazorpayRefundEntity {
+  id?: string;
 }
 
 interface RazorpayEvent {
   event?: string;
-  payload?: { payment?: { entity?: RazorpayPaymentEntity } };
+  payload?: { payment?: { entity?: RazorpayPaymentEntity }; refund?: { entity?: RazorpayRefundEntity } };
 }
 
 const PAID_EVENTS = ['payment.captured', 'order.paid'];
+
+function paymentIdFromNotes(entity?: RazorpayPaymentEntity): string | undefined {
+  const notes = entity?.notes && !Array.isArray(entity.notes) ? entity.notes : undefined;
+  return notes?.paymentId;
+}
 
 export const handlePaymentWebhook = async (req: Request, res: Response): Promise<void> => {
   const gateway = req.params.gateway;
@@ -66,27 +77,58 @@ export const handlePaymentWebhook = async (req: Request, res: Response): Promise
     res.status(400).json({ success: false, message: 'Malformed JSON' });
     return;
   }
-
-  if (!event.event || !PAID_EVENTS.includes(event.event)) {
+  if (!event.event) {
     res.json({ received: true, ignored: 'event_not_handled' });
     return;
   }
 
-  const entity = event.payload?.payment?.entity;
-  const notes = entity?.notes && !Array.isArray(entity.notes) ? entity.notes : undefined;
-  if (!entity || typeof entity.amount !== 'number') {
-    res.json({ received: true, ignored: 'malformed_event' });
-    return;
-  }
+  // Razorpay sends a unique id per event in x-razorpay-event-id; fall back to a hash of the signed body.
+  const header = req.headers['x-razorpay-event-id'];
+  const eventId =
+    (Array.isArray(header) ? header[0] : header) || `body:${crypto.createHash('sha256').update(rawBody).digest('hex')}`;
+  const eventType = event.event;
+  const payment = event.payload?.payment?.entity;
+  const refund = event.payload?.refund?.entity;
 
-  const result = await PaymentService.confirmCapturedPayment({
-    paymentId: notes?.paymentId,
-    gatewayOrderId: entity.order_id,
-    gatewayPaymentId: entity.id,
-    amountPaise: entity.amount,
-    currency: entity.currency,
-    rawPayload: event,
+  // Everything runs in ONE transaction together with the event-id insert: a redelivered event is a no-op, and a
+  // crash half-way rolls the insert back so the gateway's retry is processed normally.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const inserted = await tx.$executeRaw`
+      INSERT INTO "payment_webhook_events" ("id", "eventId", "gateway", "eventType", "payload")
+      VALUES (${crypto.randomUUID()}, ${eventId}, 'razorpay', ${eventType}, ${JSON.stringify(event)}::jsonb)
+      ON CONFLICT ("eventId") DO NOTHING`;
+    if (inserted === 0) return { duplicate: true as const };
+
+    if (PAID_EVENTS.includes(eventType)) {
+      if (!payment || typeof payment.amount !== 'number') return { ignored: 'malformed_event' };
+      return PaymentService.confirmCapturedPayment(tx, {
+        paymentId: paymentIdFromNotes(payment),
+        gatewayOrderId: payment.order_id,
+        gatewayPaymentId: payment.id,
+        amountPaise: payment.amount,
+        currency: payment.currency,
+        method: payment.method,
+        rawPayload: event,
+      });
+    }
+    if (eventType === 'payment.failed') {
+      if (!payment) return { ignored: 'malformed_event' };
+      return PaymentService.markPaymentFailed(tx, {
+        paymentId: paymentIdFromNotes(payment),
+        gatewayOrderId: payment.order_id,
+        rawPayload: event,
+      });
+    }
+    if (eventType === 'refund.processed' || eventType === 'refund.failed') {
+      if (!refund?.id) return { ignored: 'malformed_event' };
+      return PaymentService.finalizeRefund(tx, { gatewayRefundId: refund.id, failed: eventType === 'refund.failed' });
+    }
+    return { ignored: 'event_not_handled' };
   });
 
-  res.json({ received: true, ...(result.ignored ? { ignored: result.ignored } : {}) });
+  if ('duplicate' in outcome) {
+    res.json({ received: true, duplicate: true });
+    return;
+  }
+  res.json({ received: true, ...('ignored' in outcome && outcome.ignored ? { ignored: outcome.ignored } : {}) });
 };

@@ -3,19 +3,22 @@ import Joi from 'joi';
 export const initiatePaymentSchema = Joi.object({
   orderId: Joi.string().uuid().required(),
   paymentMethod: Joi.string().valid('UPI', 'CARD', 'NET_BANKING', 'COD', 'WALLET').required(),
-  gateway: Joi.string().valid('razorpay', 'payu', 'cod').optional(),
+  gateway: Joi.string().valid('razorpay', 'payu', 'cod').optional(), // ignored: the server picks the gateway
 });
 
+// Fields Razorpay Checkout.js hands back to the browser after a successful payment.
 export const verifyPaymentSchema = Joi.object({
   paymentId: Joi.string().uuid().required(),
-  transactionId: Joi.string().required(),
-  gateway: Joi.string().valid('razorpay', 'payu', 'cod').required(),
+  razorpay_order_id: Joi.string().max(100).required(),
+  razorpay_payment_id: Joi.string().max(100).required(),
+  razorpay_signature: Joi.string().max(200).required(),
 });
 
 export const processRefundSchema = Joi.object({
-  paymentId: Joi.string().uuid().required(),
+  paymentId: Joi.string().uuid().optional(),
   amount: Joi.number().positive().max(9999999).optional(),
   reason: Joi.string().max(500).optional(),
+  idempotencyKey: Joi.string().max(100).optional(),
 });
 
 export const listPaymentsQuerySchema = Joi.object({
@@ -32,7 +35,7 @@ export const addMoneySchema = Joi.object({
 
 export const walletPaymentSchema = Joi.object({
   orderId: Joi.string().uuid().required(),
-  amount: Joi.number().positive().required(),
+  amount: Joi.number().positive().optional(), // must equal the order total when given
 });
 
 export const walletTransactionsQuerySchema = Joi.object({

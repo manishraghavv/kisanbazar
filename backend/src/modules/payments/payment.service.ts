@@ -1,231 +1,357 @@
 import { creditWallet, debitWallet } from './wallet.ledger';
 import { LEDGER_TX_OPTIONS } from '../khata/khata.ledger';
-import { Prisma, PaymentStatus, SettlementStatus, WalletTransactionType } from '@prisma/client';
-import crypto from 'crypto';
+import { Prisma, PaymentMethod, PaymentStatus, SettlementStatus, WalletTransactionType } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
 import { ForbiddenError, NotFoundError, ConflictError, BadRequestError, BadGatewayError } from '../../common/errors';
+import { fromPaise, getGateway } from './gateway';
 
-interface PaymentGateway {
-  createPaymentLink(
-    amount: number,
-    orderId: string,
-    customer: { name: string; phone: string; email?: string },
-  ): Promise<{ paymentUrl: string; transactionId: string }>;
-  verifyPayment(paymentId: string, transactionId: string): Promise<{ verified: boolean; gatewayFee?: number }>;
-  processRefund(paymentId: string, amount: number): Promise<{ gatewayRefundId: string }>;
+/** One wallet debit per order, no matter which flow (checkout, /payments/initiate, /wallet/pay) gets there first. */
+export const orderWalletKey = (orderNumber: string) => `order-wallet:${orderNumber}`;
+
+const ONLINE_METHODS: PaymentMethod[] = ['UPI', 'CARD', 'NET_BANKING'];
+
+/** Razorpay's payment `method` -> our enum (used to record the real method once a payment is captured). */
+const RAZORPAY_METHODS: Record<string, PaymentMethod> = {
+  upi: 'UPI',
+  card: 'CARD',
+  netbanking: 'NET_BANKING',
+  wallet: 'UPI',
+};
+
+type Tx = Prisma.TransactionClient;
+
+export interface CaptureInput {
+  gatewayPaymentId?: string;
+  method?: string;
+  rawPayload?: unknown;
+  source: 'verify' | 'webhook';
 }
 
-class RazorpayGateway implements PaymentGateway {
-  async createPaymentLink(amount: number, orderId: string, customer: { name: string; phone: string; email?: string }) {
-    console.log(`[RAZORPAY] Creating payment link for order ${orderId}: ₹${amount}`);
-    return {
-      paymentUrl: `https://rzp.io/i/${crypto.randomBytes(8).toString('hex')}`,
-      transactionId: `rzp_${crypto.randomBytes(12).toString('hex')}`,
-    };
-  }
-
-  async verifyPayment(paymentId: string, transactionId: string) {
-    console.log(`[RAZORPAY] Verifying payment ${paymentId}/${transactionId}`);
-    return { verified: true, gatewayFee: 0 };
-  }
-
-  async processRefund(paymentId: string, amount: number) {
-    console.log(`[RAZORPAY] Processing refund of ₹${amount} for payment ${paymentId}`);
-    return { gatewayRefundId: `rfnd_${crypto.randomBytes(12).toString('hex')}` };
+/** Marks an order's payment as received: PENDING -> CONFIRMED (sub-orders follow the parent). */
+async function confirmOrder(tx: Tx, orderId: string, changedBy: string, remarks: string): Promise<void> {
+  const confirmed = await tx.order.updateMany({
+    where: { id: orderId, status: 'PENDING' },
+    data: { status: 'CONFIRMED' },
+  });
+  if (confirmed.count > 0) {
+    await tx.orderStatusHistory.create({
+      data: { orderId, oldStatus: 'PENDING', newStatus: 'CONFIRMED', changedBy, remarks },
+    });
   }
 }
+export { confirmOrder };
 
-function getGateway(gateway?: string): PaymentGateway {
-  return new RazorpayGateway();
+/** Locks a payment row for the rest of the transaction and returns it fresh. */
+async function lockPayment(tx: Tx, paymentId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`;
+  return tx.payment.findUnique({ where: { id: paymentId } });
+}
+
+/**
+ * The single place a gateway payment becomes SUCCESS. Called by both the browser verify call and the webhook;
+ * the payment row lock plus the status check make the second caller a no-op, so money is applied exactly once.
+ */
+export async function applyCapture(tx: Tx, paymentId: string, input: CaptureInput): Promise<{ applied: boolean }> {
+  const payment = await lockPayment(tx, paymentId);
+  if (!payment) throw new NotFoundError('Payment not found');
+  if (payment.status === 'SUCCESS' || payment.status === 'REFUNDED' || payment.status === 'PARTIALLY_REFUNDED') {
+    return { applied: false };
+  }
+
+  const method = input.method ? RAZORPAY_METHODS[input.method] : undefined;
+  await tx.payment.update({
+    where: { id: payment.id },
+    data: {
+      status: 'SUCCESS',
+      gatewayPaymentId: input.gatewayPaymentId ?? payment.gatewayPaymentId,
+      transactionId: input.gatewayPaymentId ?? payment.transactionId,
+      paidAt: new Date(),
+      ...(method ? { paymentMethod: method } : {}),
+      ...(input.rawPayload ? { webhookPayload: input.rawPayload as Prisma.InputJsonValue } : {}),
+    },
+  });
+
+  if (payment.purpose === 'WALLET_TOPUP') {
+    if (!payment.userId) throw new BadRequestError('Top-up payment has no owner');
+    // Idempotent on the payment id: verify + webhook can both arrive and the wallet is credited once.
+    await creditWallet(tx, payment.userId, payment.amount, {
+      remarks: 'Wallet top-up',
+      referenceId: payment.id,
+      idempotencyKey: `topup:${payment.id}`,
+    });
+  } else if (payment.orderId) {
+    await confirmOrder(
+      tx,
+      payment.orderId,
+      input.source === 'webhook' ? 'system:webhook' : (payment.userId ?? 'system'),
+      input.source === 'webhook' ? 'Payment captured (verified webhook)' : 'Payment verified',
+    );
+  }
+  return { applied: true };
 }
 
 export const PaymentService = {
-  async initiate(userId: string, data: { orderId: string; paymentMethod: string; gateway?: string }) {
-    const order = await prisma.order.findUnique({
-      where: { id: data.orderId },
-      include: { user: { select: { fullName: true, phoneNumber: true, email: true } } },
-    });
+  /**
+   * Starts a payment for an order. Online methods create a gateway order (the browser then opens Checkout.js with
+   * the returned details); COD records an expected cash payment; WALLET pays immediately and idempotently.
+   */
+  async initiate(userId: string, data: { orderId: string; paymentMethod: string }) {
+    const order = await prisma.order.findUnique({ where: { id: data.orderId } });
     if (!order) throw new NotFoundError('Order not found');
     if (order.userId !== userId) throw new ForbiddenError('Access denied');
+    if (order.status !== 'PENDING' && order.status !== 'CONFIRMED') {
+      throw new BadRequestError(`Cannot pay for an order in ${order.status} status`);
+    }
+    if (order.paymentMethod === 'KHATA_CREDIT') throw new BadRequestError('Khata orders are settled at checkout');
 
-    const existingPayment = await prisma.payment.findFirst({ where: { orderId: data.orderId, status: 'SUCCESS' } });
-    if (existingPayment) throw new BadRequestError('Order already has a successful payment');
+    const paid = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'SUCCESS' } });
+    if (paid) {
+      if (paid.paymentMethod === 'WALLET' && data.paymentMethod === 'WALLET') {
+        return { payment: paid, message: 'Order already paid from wallet' };
+      }
+      throw new BadRequestError('Order already has a successful payment');
+    }
+
+    const method = data.paymentMethod as PaymentMethod;
+    if (method === 'WALLET') return PaymentService.payOrderWithWallet(userId, order.id);
+
+    if (method === 'COD') {
+      const existing = await prisma.payment.findFirst({ where: { orderId: order.id, paymentMethod: 'COD' } });
+      const payment =
+        existing ??
+        (await prisma.payment.create({
+          data: {
+            orderId: order.id,
+            userId,
+            amount: order.totalAmount,
+            currency: 'INR',
+            paymentMethod: 'COD',
+            gateway: 'cod',
+            status: 'PENDING',
+            idempotencyKey: `cod:${order.orderNumber}`,
+          },
+        }));
+      return { payment, message: 'COD payment recorded. Amount will be collected on delivery.' };
+    }
+    if (!ONLINE_METHODS.includes(method)) throw new BadRequestError('Unsupported payment method');
+
+    // Reuse an open gateway order so refreshing the page does not pile up orders at the gateway.
+    const open = await prisma.payment.findFirst({
+      where: { orderId: order.id, status: 'PENDING', gatewayOrderId: { not: null }, amount: order.totalAmount },
+      orderBy: { createdAt: 'desc' },
+    });
+    const gateway = getGateway();
+    if (open) {
+      return {
+        payment: open,
+        gateway: checkoutDetails(open.gatewayOrderId!, open.amount, open.currency),
+      };
+    }
 
     const payment = await prisma.payment.create({
       data: {
-        orderId: data.orderId,
+        orderId: order.id,
+        userId,
         amount: order.totalAmount,
         currency: 'INR',
-        paymentMethod: data.paymentMethod as any,
-        gateway: data.gateway || (data.paymentMethod === 'COD' ? 'cod' : 'razorpay'),
+        paymentMethod: method,
+        gateway: gateway.name,
         status: 'PENDING',
-        idempotencyKey: `pay_${order.id}_${Date.now()}`,
       },
     });
+    return PaymentService.createGatewayOrder(payment.id, order.orderNumber);
+  },
 
-    if (data.paymentMethod === 'COD') {
-      return { payment, message: 'COD payment recorded. Amount will be collected on delivery.' };
-    }
-    if (data.paymentMethod === 'WALLET') {
-      return PaymentService.processWalletPayment(userId, payment.id, order.id, order.totalAmount);
-    }
-
-    const gateway = getGateway(data.gateway);
+  /** Creates the gateway-side order for a PENDING payment and returns what Checkout.js needs. */
+  async createGatewayOrder(paymentId: string, receipt: string) {
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const gateway = getGateway();
     try {
-      const result = await gateway.createPaymentLink(Number(order.totalAmount), order.id, {
-        name: order.user.fullName,
-        phone: order.user.phoneNumber,
-        email: order.user.email || undefined,
+      const gwOrder = await gateway.createOrder({
+        amount: payment.amount,
+        currency: payment.currency,
+        receipt: receipt.slice(0, 40),
+        notes: {
+          paymentId: payment.id,
+          purpose: payment.purpose,
+          ...(payment.orderId ? { orderId: payment.orderId } : {}),
+        },
       });
-      await prisma.payment.update({ where: { id: payment.id }, data: { transactionId: result.transactionId } });
-      return { payment, paymentUrl: result.paymentUrl, transactionId: result.transactionId };
+      const updated = await prisma.payment.update({
+        where: { id: payment.id },
+        data: { gatewayOrderId: gwOrder.gatewayOrderId, transactionId: gwOrder.gatewayOrderId, gateway: gateway.name },
+      });
+      return { payment: updated, gateway: checkoutDetails(gwOrder.gatewayOrderId, payment.amount, payment.currency) };
     } catch (err) {
       await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+      console.error('[PAYMENTS] gateway order creation failed:', (err as Error).message);
       throw new BadGatewayError('Payment gateway error. Please try again.');
     }
   },
 
-  async verify(userId: string, data: { paymentId: string; transactionId: string; gateway: string }) {
-    const payment = await prisma.payment.findUnique({
-      where: { id: data.paymentId },
-      include: { order: { select: { userId: true, status: true } } },
-    });
-    if (!payment) throw new NotFoundError('Payment not found');
-    if (payment.order.status === 'CANCELLED') throw new BadRequestError('Order is cancelled');
-    if (payment.status === 'SUCCESS') {
-      return { payment, message: 'Payment already verified' };
+  /**
+   * Browser callback after Checkout.js succeeds. The signature proves the gateway issued this payment id for
+   * OUR gateway order; the amount was fixed when we created that order. The webhook later confirms (idempotently).
+   */
+  async verify(
+    userId: string,
+    data: { paymentId: string; razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string },
+  ) {
+    const payment = await prisma.payment.findUnique({ where: { id: data.paymentId } });
+    if (!payment || payment.userId !== userId) throw new NotFoundError('Payment not found');
+    if (payment.status === 'SUCCESS') return { payment, message: 'Payment already verified' };
+    if (payment.status !== 'PENDING' && payment.status !== 'FAILED') {
+      throw new BadRequestError(`Payment is ${payment.status}`);
     }
-
-    const gateway = getGateway(data.gateway);
-    const result = await gateway.verifyPayment(data.paymentId, data.transactionId);
-
-    if (result.verified) {
-      const updated = await prisma.$transaction(async (tx) => {
-        const p = await tx.payment.update({
-          where: { id: data.paymentId },
-          data: {
-            status: 'SUCCESS',
-            transactionId: data.transactionId,
-            gatewayFee: result.gatewayFee ? new Prisma.Decimal(result.gatewayFee) : undefined,
-            paidAt: new Date(),
-          },
-        });
-        const currentOrder = await tx.order.findUnique({ where: { id: payment.orderId } });
-        if (currentOrder && currentOrder.status === 'PENDING') {
-          await tx.order.update({ where: { id: payment.orderId }, data: { status: 'CONFIRMED' } });
-          await tx.orderStatusHistory.create({
-            data: {
-              orderId: payment.orderId,
-              oldStatus: 'PENDING',
-              newStatus: 'CONFIRMED',
-              changedBy: userId,
-              remarks: 'Payment verified',
-            },
-          });
-        }
-        return p;
-      });
-      return { payment: updated, message: 'Payment verified successfully' };
+    if (!payment.gatewayOrderId || payment.gatewayOrderId !== data.razorpay_order_id) {
+      throw new BadRequestError('Payment does not match this gateway order');
     }
-
-    await prisma.payment.update({ where: { id: data.paymentId }, data: { status: 'FAILED' } });
-    throw new BadRequestError('Payment verification failed');
-  },
-
-  async processWalletPayment(userId: string, paymentId: string, orderId: string, amount: Prisma.Decimal) {
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundError('Wallet not found');
-
-    return prisma.$transaction(async (tx) => {
-      // Atomic conditional debit: fails with "Insufficient wallet balance" instead of going negative.
-      await debitWallet(tx, userId, amount, {
-        remarks: 'Payment for order',
-        referenceId: orderId,
-        idempotencyKey: `wallet-pay:${paymentId}`,
-      });
-      const p = await tx.payment.update({ where: { id: paymentId }, data: { status: 'SUCCESS', paidAt: new Date() } });
-      const currentOrder = await tx.order.findUnique({ where: { id: orderId } });
-      if (currentOrder && currentOrder.status === 'PENDING') {
-        await tx.order.update({ where: { id: orderId }, data: { status: 'CONFIRMED' } });
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId,
-            oldStatus: 'PENDING',
-            newStatus: 'CONFIRMED',
-            changedBy: userId,
-            remarks: 'Paid via wallet',
-          },
-        });
-      }
-      return p;
+    const ok = getGateway().verifyCheckoutSignature({
+      gatewayOrderId: data.razorpay_order_id,
+      gatewayPaymentId: data.razorpay_payment_id,
+      signature: data.razorpay_signature,
     });
+    if (!ok) throw new BadRequestError('Payment verification failed');
+
+    try {
+      await prisma.$transaction(
+        (tx) => applyCapture(tx, payment.id, { gatewayPaymentId: data.razorpay_payment_id, source: 'verify' }),
+        LEDGER_TX_OPTIONS,
+      );
+    } catch (err) {
+      // unique(gatewayPaymentId): that gateway payment already confirmed a different payment row.
+      if ((err as { code?: string }).code === 'P2002') throw new ConflictError('This gateway payment was already used');
+      throw err;
+    }
+    const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    return { payment: fresh, message: 'Payment verified successfully' };
   },
 
   /**
-   * Called only after the webhook signature has been verified.
-   * Unknown payments and amount mismatches are ignored (never confirmed) and the call is idempotent.
+   * Pays an order from the wallet. Idempotent across every flow: the wallet debit uses the per-order key, the
+   * order row is locked, and an existing SUCCESS payment short-circuits, so the wallet is charged at most once.
    */
-  async confirmCapturedPayment(input: {
-    paymentId?: string;
-    gatewayOrderId?: string;
-    gatewayPaymentId?: string;
-    amountPaise: number;
-    currency?: string;
-    rawPayload: unknown;
-  }): Promise<{ ignored?: string }> {
+  async payOrderWithWallet(userId: string, orderId: string) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "orders" WHERE "id" = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new NotFoundError('Order not found');
+      if (order.userId !== userId) throw new ForbiddenError('Access denied');
+      if (order.status !== 'PENDING' && order.status !== 'CONFIRMED') {
+        throw new BadRequestError(`Cannot pay for an order in ${order.status} status`);
+      }
+
+      const existing = await tx.payment.findFirst({ where: { orderId, status: 'SUCCESS' } });
+      if (existing) {
+        if (existing.paymentMethod !== 'WALLET') throw new BadRequestError('Order already has a successful payment');
+        return { payment: existing, message: 'Order already paid from wallet' };
+      }
+
+      await debitWallet(tx, userId, order.totalAmount, {
+        remarks: `Order ${order.orderNumber} — held until delivery`,
+        referenceId: order.id,
+        idempotencyKey: orderWalletKey(order.orderNumber),
+      });
+      const payment = await tx.payment.upsert({
+        where: { idempotencyKey: orderWalletKey(order.orderNumber) },
+        update: { status: 'SUCCESS', paidAt: new Date() },
+        create: {
+          orderId: order.id,
+          userId,
+          amount: order.totalAmount,
+          currency: 'INR',
+          paymentMethod: 'WALLET',
+          gateway: 'wallet',
+          status: 'SUCCESS',
+          paidAt: new Date(),
+          idempotencyKey: orderWalletKey(order.orderNumber),
+        },
+      });
+      await confirmOrder(tx, order.id, userId, 'Paid via wallet');
+      return { payment, message: 'Paid from wallet' };
+    }, LEDGER_TX_OPTIONS);
+  },
+
+  /**
+   * Webhook `payment.captured` / `order.paid`. Called only after the webhook signature was verified, inside the
+   * webhook's own transaction. Unknown payments and amount mismatches are ignored, never confirmed.
+   */
+  async confirmCapturedPayment(
+    tx: Tx,
+    input: {
+      paymentId?: string;
+      gatewayOrderId?: string;
+      gatewayPaymentId?: string;
+      amountPaise: number;
+      currency?: string;
+      method?: string;
+      rawPayload: unknown;
+    },
+  ): Promise<{ ignored?: string }> {
     const lookup: Prisma.PaymentWhereInput[] = [];
     if (input.paymentId) lookup.push({ id: input.paymentId });
-    if (input.gatewayOrderId) lookup.push({ transactionId: input.gatewayOrderId });
+    if (input.gatewayOrderId) lookup.push({ gatewayOrderId: input.gatewayOrderId });
     if (lookup.length === 0) return { ignored: 'unknown_payment' };
 
-    const payment = await prisma.payment.findFirst({ where: { OR: lookup } });
+    const payment = await tx.payment.findFirst({ where: { OR: lookup } });
     if (!payment) return { ignored: 'unknown_payment' };
-    if (payment.status === 'SUCCESS') return { ignored: 'already_processed' };
-    if (payment.status === 'REFUNDED' || payment.status === 'PARTIALLY_REFUNDED')
+    if (payment.gatewayOrderId && input.gatewayOrderId && payment.gatewayOrderId !== input.gatewayOrderId) {
+      return { ignored: 'order_mismatch' };
+    }
+    if (payment.status === 'SUCCESS' || payment.status === 'REFUNDED' || payment.status === 'PARTIALLY_REFUNDED') {
       return { ignored: 'already_processed' };
-
-    const expectedPaise = payment.amount.mul(100);
-    if (!expectedPaise.equals(input.amountPaise) || (input.currency && input.currency !== payment.currency)) {
+    }
+    if (
+      !fromPaise(input.amountPaise).equals(payment.amount) ||
+      (input.currency && input.currency !== payment.currency)
+    ) {
       console.error(
-        `[WEBHOOK] Amount/currency mismatch for payment ${payment.id}: expected ${expectedPaise} ${payment.currency}, got ${input.amountPaise} ${input.currency}`,
+        `[WEBHOOK] Amount/currency mismatch for payment ${payment.id}: expected ${payment.amount} ${payment.currency}, got ${fromPaise(input.amountPaise)} ${input.currency}`,
       );
       return { ignored: 'amount_mismatch' };
     }
-
-    await prisma.$transaction(async (tx) => {
-      const updated = await tx.payment.updateMany({
-        where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] } },
-        data: {
-          status: 'SUCCESS',
-          transactionId: input.gatewayPaymentId ?? payment.transactionId,
-          paidAt: new Date(),
-          webhookPayload: input.rawPayload as Prisma.InputJsonValue,
-        },
-      });
-      if (updated.count === 0) return;
-      const confirmed = await tx.order.updateMany({
-        where: { id: payment.orderId, status: 'PENDING' },
-        data: { status: 'CONFIRMED' },
-      });
-      if (confirmed.count > 0) {
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId: payment.orderId,
-            oldStatus: 'PENDING',
-            newStatus: 'CONFIRMED',
-            changedBy: 'system:webhook',
-            remarks: 'Payment captured (verified webhook)',
-          },
-        });
-      }
+    const { applied } = await applyCapture(tx, payment.id, {
+      gatewayPaymentId: input.gatewayPaymentId,
+      method: input.method,
+      rawPayload: input.rawPayload,
+      source: 'webhook',
     });
+    return applied ? {} : { ignored: 'already_processed' };
+  },
+
+  /** Webhook `payment.failed`: only an unpaid payment can fail; the order stays PENDING so the customer can retry. */
+  async markPaymentFailed(
+    tx: Tx,
+    input: { paymentId?: string; gatewayOrderId?: string; rawPayload: unknown },
+  ): Promise<{ ignored?: string }> {
+    const lookup: Prisma.PaymentWhereInput[] = [];
+    if (input.paymentId) lookup.push({ id: input.paymentId });
+    if (input.gatewayOrderId) lookup.push({ gatewayOrderId: input.gatewayOrderId });
+    if (lookup.length === 0) return { ignored: 'unknown_payment' };
+    const updated = await tx.payment.updateMany({
+      where: { OR: lookup, status: 'PENDING' },
+      data: { status: 'FAILED', webhookPayload: input.rawPayload as Prisma.InputJsonValue },
+    });
+    return updated.count > 0 ? {} : { ignored: 'not_pending' };
+  },
+
+  /** Webhook `refund.processed` / `refund.failed`: finalises a refund we started (or records an unknown one). */
+  async finalizeRefund(tx: Tx, input: { gatewayRefundId: string; failed?: boolean }): Promise<{ ignored?: string }> {
+    const refund = await tx.refunds.findUnique({ where: { gatewayRefundId: input.gatewayRefundId } });
+    if (!refund) return { ignored: 'unknown_refund' };
+    if (refund.status === 'PROCESSED' || refund.status === 'FAILED') return { ignored: 'already_processed' };
+    await tx.refunds.update({
+      where: { id: refund.id },
+      data: input.failed ? { status: 'FAILED' } : { status: 'PROCESSED', processedAt: new Date() },
+    });
+    if (refund.paymentId) await syncPaymentRefundStatus(tx, refund.paymentId);
     return {};
   },
 
   async getPayment(paymentId: string) {
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
-      include: { order: { select: { id: true, orderNumber: true, totalAmount: true, status: true } } },
+      include: { order: { select: { id: true, orderNumber: true, totalAmount: true, status: true } }, refunds: true },
     });
     if (!payment) throw new NotFoundError('Payment not found');
     return payment;
@@ -250,34 +376,140 @@ export const PaymentService = {
     return { payments, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
-  async processRefund(paymentId: string, data: { amount?: number; reason?: string }) {
-    const payment = await prisma.payment.findUnique({
-      where: { id: paymentId },
-      include: { order: { select: { id: true, orderNumber: true } } },
+  async processRefund(paymentId: string, data: { amount?: number; reason?: string; idempotencyKey?: string }) {
+    const result = await RefundService.refundPayment({
+      paymentId,
+      amount: data.amount !== undefined ? new Prisma.Decimal(data.amount) : undefined,
+      reason: data.reason,
+      idempotencyKey: data.idempotencyKey,
     });
-    if (!payment) throw new NotFoundError('Payment not found');
-    if (payment.status !== 'SUCCESS') throw new BadRequestError('Can only refund successful payments');
-    const refundAmount = data.amount
-      ? new Prisma.Decimal(Math.min(data.amount, Number(payment.amount)))
-      : payment.amount;
-    const gateway = getGateway(payment.gateway || undefined);
-    const refundResult = await gateway.processRefund(paymentId, Number(refundAmount));
-    await prisma.$transaction(async (tx) => {
-      await tx.refunds.create({
+    return {
+      message: `Refund of ₹${result.refund.amount} ${result.refund.status === 'PROCESSED' ? 'processed' : 'initiated'}`,
+      gatewayRefundId: result.refund.gatewayRefundId,
+      refund: result.refund,
+    };
+  },
+};
+
+function checkoutDetails(gatewayOrderId: string, amount: Prisma.Decimal, currency: string) {
+  const gateway = getGateway();
+  return {
+    name: gateway.name,
+    keyId: gateway.publicKeyId,
+    gatewayOrderId,
+    amountPaise: amount.mul(100).toDecimalPlaces(0).toNumber(),
+    currency,
+  };
+}
+
+/** Recomputes a payment's REFUNDED / PARTIALLY_REFUNDED status from its refunds. */
+async function syncPaymentRefundStatus(tx: Tx, paymentId: string): Promise<void> {
+  const payment = await tx.payment.findUnique({ where: { id: paymentId } });
+  if (!payment) return;
+  const agg = await tx.refunds.aggregate({
+    where: { paymentId, status: { in: ['PROCESSED', 'PENDING'] } },
+    _sum: { amount: true },
+  });
+  const refunded = agg._sum.amount ?? new Prisma.Decimal(0);
+  if (refunded.lte(0)) return;
+  const status: PaymentStatus = refunded.gte(payment.amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+  if (payment.status !== status) await tx.payment.update({ where: { id: paymentId }, data: { status } });
+}
+
+export const RefundService = {
+  /**
+   * Refunds (part of) a successful payment back to where the money came from:
+   *   online -> the gateway (Razorpay refund, finalised by the refund.processed webhook if it is still pending)
+   *   wallet -> the wallet, COD -> recorded for manual cash settlement.
+   * Total refunds can never exceed the payment amount. Repeating a call with the same idempotency key is a no-op.
+   */
+  async refundPayment(input: {
+    paymentId: string;
+    amount?: Prisma.Decimal;
+    reason?: string;
+    idempotencyKey?: string;
+    orderItemId?: string;
+  }) {
+    // Step 1 (short DB transaction): validate against what was already refunded and reserve the refund row.
+    const reserved = await prisma.$transaction(async (tx) => {
+      const payment = await lockPayment(tx, input.paymentId);
+      if (!payment) throw new NotFoundError('Payment not found');
+
+      if (input.idempotencyKey) {
+        const prior = await tx.refunds.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+        if (prior) return { payment, refund: prior, replay: true };
+      }
+      if (payment.status !== 'SUCCESS' && payment.status !== 'PARTIALLY_REFUNDED') {
+        throw new BadRequestError('Can only refund successful payments');
+      }
+      const agg = await tx.refunds.aggregate({
+        where: { paymentId: payment.id, status: { in: ['PROCESSED', 'PENDING'] } },
+        _sum: { amount: true },
+      });
+      const remaining = payment.amount.sub(agg._sum.amount ?? 0);
+      const amount = (input.amount ?? remaining).toDecimalPlaces(2);
+      if (!amount.gt(0)) throw new BadRequestError('Nothing left to refund');
+      if (amount.gt(remaining)) throw new BadRequestError(`Refund exceeds the refundable amount of ₹${remaining}`);
+
+      const refund = await tx.refunds.create({
         data: {
-          orderId: payment.orderId,
-          amount: refundAmount,
-          reason: data.reason,
-          status: 'PROCESSED',
-          gatewayRefundId: refundResult.gatewayRefundId,
-          processedAt: new Date(),
+          orderId: payment.orderId!,
+          paymentId: payment.id,
+          orderItemId: input.orderItemId,
+          amount,
+          reason: input.reason,
+          status: 'PENDING',
+          idempotencyKey: input.idempotencyKey,
         },
       });
-      const newStatus = refundAmount.eq(payment.amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
-      await tx.payment.update({ where: { id: paymentId }, data: { status: newStatus as PaymentStatus } });
-      await tx.order.update({ where: { id: payment.orderId }, data: { status: 'REFUNDED' } });
+      return { payment, refund, replay: false };
+    }, LEDGER_TX_OPTIONS);
+
+    if (reserved.replay) return { refund: reserved.refund };
+    const { payment, refund } = reserved;
+
+    // Step 2: move the money. Network calls happen outside any DB transaction.
+    let gatewayRefundId: string | null = null;
+    let finalStatus: 'PROCESSED' | 'PENDING' = 'PROCESSED';
+    try {
+      if (payment.paymentMethod === 'WALLET') {
+        await prisma.$transaction(async (tx) => {
+          await creditWallet(tx, payment.userId!, refund.amount, {
+            remarks: `Refund for order payment ${payment.id}`,
+            referenceId: payment.orderId ?? undefined,
+            idempotencyKey: `refund-wallet:${refund.id}`,
+          });
+        }, LEDGER_TX_OPTIONS);
+      } else if (payment.gatewayPaymentId) {
+        const result = await getGateway().refund({
+          gatewayPaymentId: payment.gatewayPaymentId,
+          amount: refund.amount,
+          receipt: refund.id,
+          notes: { refundId: refund.id, paymentId: payment.id },
+        });
+        gatewayRefundId = result.gatewayRefundId;
+        finalStatus = result.status === 'processed' ? 'PROCESSED' : 'PENDING';
+      }
+      // COD / cash: nothing to move electronically; the record is the instruction for manual settlement.
+    } catch (err) {
+      await prisma.refunds.update({ where: { id: refund.id }, data: { status: 'FAILED' } });
+      console.error('[PAYMENTS] refund failed:', (err as Error).message);
+      throw new BadGatewayError('Refund could not be processed. Please try again.');
+    }
+
+    const done = await prisma.$transaction(async (tx) => {
+      const updated = await tx.refunds.update({
+        where: { id: refund.id },
+        data: {
+          status: finalStatus,
+          gatewayRefundId,
+          processedAt: finalStatus === 'PROCESSED' ? new Date() : null,
+        },
+      });
+      await syncPaymentRefundStatus(tx, payment.id);
+      return updated;
     });
-    return { message: `Refund of ₹${refundAmount} processed`, gatewayRefundId: refundResult.gatewayRefundId };
+    return { refund: done };
   },
 };
 
@@ -301,12 +533,25 @@ export const WalletService = {
     return { balance: wallet.balance, walletId: wallet.id };
   },
 
-  async addMoney(userId: string, amount: number, remarks?: string, idempotencyKey?: string) {
-    const decimalAmount = new Prisma.Decimal(amount);
-    return prisma.$transaction(async (tx) => {
-      await creditWallet(tx, userId, decimalAmount, { remarks: remarks || 'Money added to wallet', idempotencyKey });
-      return tx.wallet.findUniqueOrThrow({ where: { userId } });
-    }, LEDGER_TX_OPTIONS);
+  /**
+   * Starts a wallet top-up. The wallet is NOT credited here: it is credited only when the gateway payment is
+   * verified (browser verify call or webhook), by `applyCapture`. There is no other credit path.
+   */
+  async startTopUp(userId: string, amount: number) {
+    const decimal = new Prisma.Decimal(amount).toDecimalPlaces(2);
+    if (!decimal.gt(0)) throw new BadRequestError('Amount must be greater than zero');
+    const payment = await prisma.payment.create({
+      data: {
+        userId,
+        purpose: 'WALLET_TOPUP',
+        amount: decimal,
+        currency: 'INR',
+        paymentMethod: 'UPI', // replaced with the real method when the payment is captured
+        gateway: getGateway().name,
+        status: 'PENDING',
+      },
+    });
+    return PaymentService.createGatewayOrder(payment.id, `topup-${payment.id.slice(0, 8)}`);
   },
 
   async getTransactions(userId: string, filters: { page: number; limit: number; type?: string }) {
@@ -322,22 +567,15 @@ export const WalletService = {
     return { balance: wallet.balance, transactions, total, page, limit, totalPages: Math.ceil(total / limit) };
   },
 
-  async useForPayment(userId: string, orderId: string, amount: number) {
+  /** `/wallet/pay`: same single-debit path as checkout and /payments/initiate; the client amount must match. */
+  async useForPayment(userId: string, orderId: string, amount?: number) {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundError('Order not found');
     if (order.userId !== userId) throw new ForbiddenError('Access denied');
-    const payment = await prisma.payment.create({
-      data: {
-        orderId,
-        amount: new Prisma.Decimal(amount),
-        currency: 'INR',
-        paymentMethod: 'WALLET',
-        gateway: 'wallet',
-        status: 'PENDING',
-        idempotencyKey: `wal_${orderId}_${Date.now()}`,
-      },
-    });
-    return PaymentService.processWalletPayment(userId, payment.id, orderId, new Prisma.Decimal(amount));
+    if (amount !== undefined && !order.totalAmount.equals(new Prisma.Decimal(amount))) {
+      throw new BadRequestError('Amount does not match the order total');
+    }
+    return PaymentService.payOrderWithWallet(userId, orderId);
   },
 };
 

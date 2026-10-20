@@ -5,7 +5,8 @@
 #    docker compose --profile test up -d postgres-test   # throwaway DB for `npm test`
 #
 #  Required: JWT_ACCESS_SECRET, JWT_REFRESH_SECRET (>=32 chars, different; `openssl rand -hex 48`) and
-#  RAZORPAY_WEBHOOK_SECRET (>=16 chars). For local dev set API_NODE_ENV=development.
+#  RAZORPAY_WEBHOOK_SECRET (>=16 chars). In production RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET are required too;
+#  for local dev set API_NODE_ENV=development (the fake gateway is used when the keys are unset).
 #  NOTE: compose also reads backend/.env for ${VAR} interpolation; pass --env-file <file> to override.
 #  Host ports are offset from the defaults so the stack does not clash with a local Postgres/Redis.
 # ─────────────────────────────────────────────────────────────
@@ -70,6 +71,8 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET (>=32 chars)}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET (>=32 chars)}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:?set RAZORPAY_WEBHOOK_SECRET (>=16 chars, required when NODE_ENV=production)}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:

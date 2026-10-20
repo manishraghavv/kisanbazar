@@ -195,7 +195,7 @@ model User {
   id           String  @id @default(uuid())
   fullName     String
   email        String? @unique
-  phoneNumber  String @unique
+  phoneNumber  String  @unique
   passwordHash String?
 
   role   UserRole
@@ -227,6 +227,7 @@ model User {
   cart           Cart?
   wishlist       Wishlist?
   wallet         Wallet?
+  payments       Payment[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -773,24 +774,31 @@ model ShipmentEvent {
 // ─────────────────────────────────────────────
 
 model Payment {
-  id             String        @id @default(uuid())
-  orderId        String
-  amount         Decimal       @db.Decimal(12, 2)
-  currency       String        @default("INR")
-  paymentMethod  PaymentMethod
-  gateway        String? // razorpay | payu | cod
-  transactionId  String?
-  gatewayFee     Decimal?      @db.Decimal(8, 2)
-  status         PaymentStatus @default(PENDING)
-  idempotencyKey String?       @unique // prevent double-charge
-  webhookPayload Json? // raw gateway webhook for audit
+  id               String        @id @default(uuid())
+  orderId          String? // null for wallet top-ups
+  userId           String? // payer (set for every payment created after Phase 2.5)
+  purpose          String        @default("ORDER") // ORDER | WALLET_TOPUP
+  amount           Decimal       @db.Decimal(12, 2)
+  currency         String        @default("INR")
+  paymentMethod    PaymentMethod
+  gateway          String? // razorpay | payu | cod
+  transactionId    String?
+  gatewayOrderId   String?       @unique // Razorpay order_… created at initiate
+  gatewayPaymentId String?       @unique // Razorpay pay_… once the customer paid
+  gatewayFee       Decimal?      @db.Decimal(8, 2)
+  status           PaymentStatus @default(PENDING)
+  idempotencyKey   String?       @unique // prevent double-charge
+  webhookPayload   Json? // raw gateway webhook for audit
 
-  order Order @relation(fields: [orderId], references: [id])
+  order   Order?    @relation(fields: [orderId], references: [id])
+  user    User?     @relation(fields: [userId], references: [id])
+  refunds Refunds[]
 
   createdAt DateTime  @default(now())
   paidAt    DateTime?
 
   @@index([orderId])
+  @@index([userId])
   @@map("payments")
 }
 
@@ -801,10 +809,13 @@ model Refunds {
   amount          Decimal   @db.Decimal(12, 2)
   reason          String?
   status          String    @default("PENDING")
-  gatewayRefundId String?
+  gatewayRefundId String?   @unique
   processedAt     DateTime?
+  paymentId       String? // payment this refund was issued against
+  idempotencyKey  String?   @unique
 
-  order Order @relation(fields: [orderId], references: [id])
+  order   Order    @relation(fields: [orderId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   createdAt DateTime @default(now())
 
@@ -1152,4 +1163,17 @@ model RolePermission {
 
   @@unique([role, permissionId])
   @@map("role_permissions")
+}
+
+/// One row per gateway webhook delivery (Razorpay's x-razorpay-event-id). The unique eventId makes
+/// redelivery of the same event a no-op.
+model PaymentWebhookEvent {
+  id         String   @id @default(uuid())
+  eventId    String   @unique
+  gateway    String
+  eventType  String
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@map("payment_webhook_events")
 }

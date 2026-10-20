@@ -82,6 +82,17 @@ const schema = Joi.object({
     otherwise: Joi.string().allow('').optional(),
   }),
 
+  // Real gateway credentials are mandatory in production; elsewhere the fake gateway is used when unset.
+  RAZORPAY_KEY_ID: Joi.when(isProduction, {
+    is: 'production',
+    then: Joi.string().required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
+  RAZORPAY_KEY_SECRET: Joi.when(isProduction, {
+    is: 'production',
+    then: Joi.string().required(),
+    otherwise: Joi.string().allow('').optional(),
+  }),
   RAZORPAY_WEBHOOK_SECRET: Joi.when(isProduction, {
     is: 'production',
     then: Joi.string().min(16).required(),

@@ -4,6 +4,7 @@ import { ForbiddenError, NotFoundError, ConflictError, BadRequestError } from '.
 import PDFDocument from 'pdfkit';
 import { LEDGER_TX_OPTIONS, postKhataEntry } from '../khata/khata.ledger';
 import { creditWallet, debitWallet } from '../payments/wallet.ledger';
+import { confirmOrder, orderWalletKey } from '../payments/payment.service';
 import { computeCouponDiscount, computeDeliveryCharge } from './pricing';
 
 export const InvoiceService = {
@@ -616,8 +617,24 @@ export const OrderService = {
         await debitWallet(tx, userId, totalAmount, {
           remarks: `Order ${orderNumber} — held until delivery`,
           referenceId: newOrder.id,
-          idempotencyKey: `order-wallet:${orderNumber}`,
+          idempotencyKey: orderWalletKey(orderNumber),
         });
+        // The wallet leg IS the payment: record it as SUCCESS under the same per-order key that
+        // /payments/initiate and /wallet/pay use, so no later flow can charge the wallet a second time.
+        await tx.payment.create({
+          data: {
+            orderId: newOrder.id,
+            userId,
+            amount: totalAmount,
+            currency: 'INR',
+            paymentMethod: 'WALLET',
+            gateway: 'wallet',
+            status: 'SUCCESS',
+            paidAt: new Date(),
+            idempotencyKey: orderWalletKey(orderNumber),
+          },
+        });
+        await confirmOrder(tx, newOrder.id, userId, 'Paid via wallet');
       }
       if (khataAccountId && totalAmount.gt(0)) {
         await postKhataEntry(tx, {
@@ -632,7 +649,7 @@ export const OrderService = {
         });
       }
 
-      return newOrder;
+      return tx.order.findUniqueOrThrow({ where: { id: newOrder.id }, include: { items: true } });
     }, LEDGER_TX_OPTIONS);
     return order;
   },

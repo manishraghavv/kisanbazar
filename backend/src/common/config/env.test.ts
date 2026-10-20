@@ -17,6 +17,8 @@ const prod = (over: Record<string, string | undefined> = {}) =>
     NODE_ENV: 'production',
     CORS_ORIGIN: 'https://shop.example.in',
     RAZORPAY_WEBHOOK_SECRET: 'whsec_0123456789abcdef',
+    RAZORPAY_KEY_ID: 'rzp_live_fixture',
+    RAZORPAY_KEY_SECRET: 'rzp_secret_fixture',
     ...over,
   });
 
@@ -85,6 +87,11 @@ describe('validateEnv — production hardening', () => {
   });
   it('requires RAZORPAY_WEBHOOK_SECRET in production only', () => {
     expect(problems(prod({ RAZORPAY_WEBHOOK_SECRET: undefined })).join()).toMatch(/RAZORPAY_WEBHOOK_SECRET/);
+    expect(problems(base())).toEqual([]);
+  });
+  it('requires the Razorpay API keys in production only', () => {
+    expect(problems(prod({ RAZORPAY_KEY_ID: undefined })).join()).toMatch(/RAZORPAY_KEY_ID/);
+    expect(problems(prod({ RAZORPAY_KEY_SECRET: undefined })).join()).toMatch(/RAZORPAY_KEY_SECRET/);
     expect(problems(base())).toEqual([]);
   });
   it('requires DATABASE_URL', () => {

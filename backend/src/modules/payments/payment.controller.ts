@@ -84,8 +84,11 @@ export const getWalletBalance = async (req: AuthRequest, res: Response): Promise
 
 export const addMoneyToWallet = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const wallet = await walletService.addMoney(req.user.id, req.body.amount, req.body.remarks);
-    res.json({ success: true, message: 'Money added to wallet', data: wallet });
+    // The wallet is credited only after the gateway payment is verified; this just starts the checkout.
+    const result = await walletService.startTopUp(req.user.id, req.body.amount);
+    res
+      .status(201)
+      .json({ success: true, message: 'Top-up initiated. Complete the payment to add money.', data: result });
   } catch (err) {
     handleServiceError(err, res);
   }
