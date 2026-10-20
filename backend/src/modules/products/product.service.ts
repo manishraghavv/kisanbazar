@@ -562,13 +562,17 @@ export const InventoryService = {
     });
     if (!variant) throw new NotFoundError('Variant not found');
     if (variant.product.vendor.userId !== vendorUserId) throw new ForbiddenError('Access denied');
-    const newQty = variant.stockQuantity + data.quantityChange;
-    if (newQty < 0)
-      throw new BadRequestError(
-        `Insufficient stock. Available: ${variant.stockQuantity}, Requested change: ${data.quantityChange}`,
-      );
-    const [log] = await prisma.$transaction([
-      prisma.inventory.create({
+    // Atomic: the WHERE clause is the non-negative guard, so concurrent adjustments and checkouts cannot
+    // lose an update or drive stock below zero (a read-then-write here could).
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.$executeRaw`
+        UPDATE "product_variants" SET "stockQuantity" = "stockQuantity" + ${data.quantityChange}, "updatedAt" = now()
+        WHERE "id" = ${data.variantId} AND "stockQuantity" + ${data.quantityChange} >= 0`;
+      if (updated === 0)
+        throw new BadRequestError(
+          `Insufficient stock. Available: ${variant.stockQuantity}, Requested change: ${data.quantityChange}`,
+        );
+      return tx.inventory.create({
         data: {
           variantId: data.variantId,
           quantityChange: data.quantityChange,
@@ -576,10 +580,8 @@ export const InventoryService = {
           referenceId: data.referenceId,
           performedById: vendorUserId,
         },
-      }),
-      prisma.productVariant.update({ where: { id: data.variantId }, data: { stockQuantity: newQty } }),
-    ]);
-    return log;
+      });
+    });
   },
 
   async getLowStock(vendorUserId: string) {

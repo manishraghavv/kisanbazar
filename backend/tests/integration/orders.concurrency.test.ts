@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { OrderService } from '../../src/modules/orders/order.service';
+import { InventoryService } from '../../src/modules/products/product.service';
 import { debitWallet, creditWallet } from '../../src/modules/payments/wallet.ledger';
 import { LEDGER_TX_OPTIONS, reconcileKhata } from '../../src/modules/khata/khata.ledger';
 import { api, bearer, createCatalogItem, createFarmerDirect, createKhataAccount, fillCart, prisma } from '../helpers';
@@ -252,5 +253,23 @@ describe('wallet under concurrency', () => {
     await expect(
       prisma.productVariant.update({ where: { id: catalog.variant.id }, data: { reservedQty: -1 } }),
     ).rejects.toThrow();
+  });
+});
+
+describe('inventory adjustments under concurrency', () => {
+  it('20 parallel -1 adjustments on stock 10: exactly 10 succeed, stock ends at 0, log matches', async () => {
+    const catalog = await createCatalogItem({ stock: 10 });
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, () =>
+        InventoryService.adjust(catalog.vendorUser.id, {
+          variantId: catalog.variant.id,
+          quantityChange: -1,
+          reason: 'test',
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(10);
+    expect((await variantNow(catalog.variant.id)).stockQuantity).toBe(0);
+    expect(await prisma.inventory.count({ where: { variantId: catalog.variant.id } })).toBe(10);
   });
 });
