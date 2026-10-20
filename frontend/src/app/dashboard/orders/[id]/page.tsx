@@ -8,6 +8,7 @@ import { useOrderStore } from "@/stores/orderStore";
 import apiClient from "@/lib/api-client";
 import { Package, ChevronDown, ChevronUp, XCircle, RotateCcw, Clock, Truck, CheckCircle2, Loader2, ChevronLeft, MapPin, CreditCard, Download, AlertTriangle, ArrowLeft, Calendar, RefreshCw } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
+import { SubOrdersSection } from "@/components/orders/SubOrdersSection";
 import type { OrderDetail, OrderStatus } from "@/types/auth";
 
 // ─── Status config ───────────────────────────────────────────────────────────
@@ -28,7 +29,6 @@ const STATUS_STYLES: Record<
 };
 
 const CANCELLABLE_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED"];
-const RETURNABLE_STATUSES: OrderStatus[] = ["DELIVERED"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,119 +105,7 @@ function StatusTimeline({ entries }: { entries: OrderDetail["statusHistory"] }) 
   );
 }
 
-// ─── Shipment Tracking Component ─────────────────────────────────────────────
-
-function ShipmentCard({ shipment }: { shipment: OrderDetail["shipments"][0] }) {
-  const [showEvents, setShowEvents] = useState(false);
-  const events = shipment.events ?? [];
-
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 dark:border-gray-700 bg-white dark:bg-gray-800 dark:bg-gray-800 shadow-sm dark:shadow-gray-950/30">
-      <button
-        onClick={() => setShowEvents(!showEvents)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-50 dark:bg-cyan-900/30 dark:bg-cyan-900/30">
-            <Truck size={18} className="text-cyan-700 dark:text-cyan-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100">
-              {shipment.logisticsPartner ?? "Shipment"}
-            </p>
-            {shipment.awbNumber && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono">AWB: {shipment.awbNumber}</p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {shipment.currentStatus && (
-            <span className="rounded-full bg-cyan-50 dark:bg-cyan-900/30 dark:bg-cyan-900/30 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-800">
-              {shipment.currentStatus}
-            </span>
-          )}
-          {showEvents ? <ChevronUp size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" /> : <ChevronDown size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />}
-        </div>
-      </button>
-
-      {showEvents && (
-        <div className="border-t border-gray-100 dark:border-gray-700 dark:border-gray-700 px-5 py-4">
-          {events.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 italic">No tracking events yet</p>
-          ) : (
-            <div className="space-y-0">
-              {events.map((event, idx) => {
-                const isLast = idx === events.length - 1;
-                return (
-                  <div key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
-                    {!isLast && <div className="absolute left-[7px] top-4 h-full w-px bg-gray-200 dark:bg-gray-600 dark:bg-gray-600" />}
-                    <div className={`relative z-10 mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${idx === 0 ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-900/30 dark:bg-cyan-900/30" : "border-gray-300 dark:border-gray-600 dark:border-gray-600 bg-white dark:bg-gray-800 dark:bg-gray-800"}`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-100">{event.eventStatus}</p>
-                      {event.location && <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{event.location}</p>}
-                      <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{formatDateTime(event.eventTime)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Delivery ETA */}
-      {shipment.deliveryEta && (
-        <div className="border-t border-gray-100 dark:border-gray-700 dark:border-gray-700 px-5 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-            <Calendar size={12} />
-            <span>Expected delivery: <span className="font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100">{formatDate(shipment.deliveryEta)}</span></span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Invoice Button ──────────────────────────────────────────────────────────
-
-function InvoiceButton({ orderId }: { orderId: string }) {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleDownload = async () => {
-    setIsLoading(true);
-    try {
-      const res = await apiClient.get(`/orders/${orderId}/invoice`, {
-        responseType: "blob",
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `invoice-${orderId.slice(0, 8)}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success("Invoice downloaded");
-    } catch {
-      toast.error("Failed to download invoice");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleDownload}
-      disabled={isLoading}
-      className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:border-gray-600 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:hover:bg-gray-700/50 dark:bg-gray-700/50 disabled:opacity-50"
-    >
-      {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-      {isLoading ? "Downloading..." : "Invoice PDF"}
-    </button>
-  );
-}
-
-// ─── Cancel / Return Modal ───────────────────────────────────────────────────
+// ─── Cancel Modal ────────────────────────────────────────────────────────────
 
 function ActionModal({
   type,
@@ -226,7 +114,7 @@ function ActionModal({
   onCancel,
   isProcessing,
 }: {
-  type: "cancel" | "return";
+  type: "cancel";
   orderNumber: string;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
@@ -286,13 +174,13 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const orderId = params.id as string;
 
-  const { selectedOrder, isOrderLoading, fetchOrderById, cancelOrder, returnOrder } = useOrderStore();
+  const { selectedOrder, isOrderLoading, fetchOrderById, cancelOrder } = useOrderStore();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Action modal
-  const [actionType, setActionType] = useState<"cancel" | "return" | null>(null);
+  const [actionType, setActionType] = useState<"cancel" | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const loadOrder = useCallback(async () => {
@@ -336,23 +224,6 @@ export default function OrderDetailPage() {
     }
   };
 
-  // Return handler
-  const handleReturn = async (reason: string) => {
-    if (!order) return;
-    setIsProcessing(true);
-    try {
-      await returnOrder(order.id, reason);
-      toast.success("Return requested");
-      setActionType(null);
-      await loadOrder();
-    } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      toast.error(axiosError.response?.data?.message ?? "Failed to request return");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   // Loading
   if (isLoading || isOrderLoading) {
     return (
@@ -383,8 +254,8 @@ export default function OrderDetailPage() {
     );
   }
 
-  const canCancel = CANCELLABLE_STATUSES.includes(order.status as OrderStatus);
-  const canReturn = RETURNABLE_STATUSES.includes(order.status as OrderStatus);
+  // Cancelling the order cancels every part (sub-order) that is still PENDING/CONFIRMED.
+  const canCancel = (order.subOrders ?? []).some((s) => CANCELLABLE_STATUSES.includes(s.status));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -414,19 +285,11 @@ export default function OrderDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <InvoiceButton orderId={order.id} />
             {canCancel && (
               <button onClick={() => setActionType("cancel")}
                 className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-800 px-4 py-2.5 text-sm font-semibold text-red-700 dark:text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-900/30 dark:bg-red-900/30">
                 <XCircle size={15} />
                 Cancel
-              </button>
-            )}
-            {canReturn && (
-              <button onClick={() => setActionType("return")}
-                className="flex items-center gap-2 rounded-lg border border-orange-200 dark:border-orange-800 px-4 py-2.5 text-sm font-semibold text-orange-700 dark:text-orange-400 transition-colors hover:bg-orange-50 dark:bg-orange-900/30">
-                <RotateCcw size={15} />
-                Return
               </button>
             )}
             <Link href="/dashboard/orders"
@@ -441,45 +304,8 @@ export default function OrderDetailPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* ── Left Column ── */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Order Items */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 dark:border-gray-700 bg-white dark:bg-gray-800 dark:bg-gray-800 shadow-sm dark:shadow-gray-950/30">
-            <div className="border-b border-gray-100 dark:border-gray-700 dark:border-gray-700 px-5 py-4">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">Items ({order.items.length})</h3>
-            </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-700 dark:divide-gray-700">
-              {order.items.map((item) => (
-                <div key={item.id} className="flex items-center gap-4 px-5 py-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-700/50 dark:bg-gray-700/50">
-                    <Package size={20} className="text-gray-300" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100">{item.variant.product.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                      {item.variant.variantName ?? "Default"} · SKU: {item.variant.sku} · Qty: {item.quantity}
-                    </p>
-                    {item.itemStatus && item.itemStatus !== order.status && (
-                      <span className="mt-0.5 inline-block rounded-full bg-gray-100 dark:bg-gray-700 dark:bg-gray-700 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300 dark:text-gray-300">
-                        {item.itemStatus}
-                      </span>
-                    )}
-                  </div>
-                  <p className="shrink-0 text-sm font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">{formatCurrency(item.unitPrice * item.quantity)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Shipment Tracking */}
-          {order.shipments && order.shipments.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">Shipment Tracking</h3>
-              <div className="space-y-3">
-                {order.shipments.map((shipment) => (
-                  <ShipmentCard key={shipment.id} shipment={shipment} />
-                ))}
-              </div>
-            </div>
-          )}
+          {/* One card per seller: items, GST, tracking, invoice, cancel and return */}
+          <SubOrdersSection order={order} onChanged={loadOrder} />
 
           {/* Status Timeline */}
           {order.statusHistory && order.statusHistory.length > 0 && (
@@ -534,6 +360,24 @@ export default function OrderDetailPage() {
                   {order.deliveryCharge === 0 ? "Free" : formatCurrency(order.deliveryCharge)}
                 </span>
               </div>
+              {Number(order.cgstAmount ?? 0) > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">CGST</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(Number(order.cgstAmount))}</span>
+                </div>
+              )}
+              {Number(order.sgstAmount ?? 0) > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">SGST</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(Number(order.sgstAmount))}</span>
+                </div>
+              )}
+              {Number(order.igstAmount ?? 0) > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 dark:text-gray-400">IGST</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(Number(order.igstAmount))}</span>
+                </div>
+              )}
               {order.discountAmount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-300 dark:text-gray-300">Discount</span>
@@ -614,7 +458,7 @@ export default function OrderDetailPage() {
         <ActionModal
           type={actionType}
           orderNumber={order.orderNumber}
-          onConfirm={actionType === "cancel" ? handleCancel : handleReturn}
+          onConfirm={handleCancel}
           onCancel={() => setActionType(null)}
           isProcessing={isProcessing}
         />

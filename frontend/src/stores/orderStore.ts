@@ -32,8 +32,6 @@ interface OrderActions {
   fetchOrderById: (id: string) => Promise<OrderDetail>;
   /** Cancel an order (only PENDING / CONFIRMED) */
   cancelOrder: (id: string, reason: string) => Promise<void>;
-  /** Request a return (only DELIVERED / SHIPPED) */
-  returnOrder: (id: string, reason: string) => Promise<void>;
   /** Clear selected order */
   clearSelectedOrder: () => void;
 }
@@ -110,30 +108,8 @@ export const useOrderStore = create<OrderStore>()((set) => ({
   },
 
   cancelOrder: async (id: string, reason: string) => {
+    // Cancels every part of the order that can still be cancelled; callers reload the order for the new statuses.
     await apiClient.post(`/orders/${id}/cancel`, { reason });
-    // Update local order status
-    set((state) => ({
-      orders: state.orders.map((o) =>
-        o.id === id ? { ...o, status: "CANCELLED" as OrderStatus, cancellationReason: reason } : o,
-      ),
-      selectedOrder:
-        state.selectedOrder?.id === id
-          ? { ...state.selectedOrder, status: "CANCELLED" as OrderStatus, cancellationReason: reason }
-          : state.selectedOrder,
-    }));
-  },
-
-  returnOrder: async (id: string, reason: string) => {
-    await apiClient.post(`/orders/${id}/return`, { reason });
-    set((state) => ({
-      orders: state.orders.map((o) =>
-        o.id === id ? { ...o, status: "RETURNED" as OrderStatus } : o,
-      ),
-      selectedOrder:
-        state.selectedOrder?.id === id
-          ? { ...state.selectedOrder, status: "RETURNED" as OrderStatus }
-          : state.selectedOrder,
-    }));
   },
 
   clearSelectedOrder: () => {

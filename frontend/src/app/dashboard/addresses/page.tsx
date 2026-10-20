@@ -19,39 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { CreateAddressPayload, UpdateAddressPayload } from "@/types/auth";
-
-// ─── Indian states ────────────────────────────────────────────────────────────
-
-const STATES = [
-  "Andhra Pradesh",
-  "Arunachal Pradesh",
-  "Assam",
-  "Bihar",
-  "Chhattisgarh",
-  "Goa",
-  "Gujarat",
-  "Haryana",
-  "Himachal Pradesh",
-  "Jharkhand",
-  "Karnataka",
-  "Kerala",
-  "Madhya Pradesh",
-  "Maharashtra",
-  "Manipur",
-  "Meghalaya",
-  "Mizoram",
-  "Nagaland",
-  "Odisha",
-  "Punjab",
-  "Rajasthan",
-  "Sikkim",
-  "Tamil Nadu",
-  "Telangana",
-  "Tripura",
-  "Uttar Pradesh",
-  "Uttarakhand",
-  "West Bengal",
-];
+import { INDIAN_STATES, stateCodeFromName } from "@/lib/indianStates";
 
 // ─── Label options ────────────────────────────────────────────────────────────
 
@@ -94,6 +62,7 @@ function AddressForm({
     city: string;
     district: string;
     state: string;
+    stateCode: string;
     pincode: string;
     isDefault: boolean;
   };
@@ -107,7 +76,8 @@ function AddressForm({
   const [village, setVillage] = useState(initial?.village ?? "");
   const [city, setCity] = useState(initial?.city ?? "");
   const [district, setDistrict] = useState(initial?.district ?? "");
-  const [state, setState] = useState(initial?.state ?? "");
+  // The GST state code decides CGST+SGST vs IGST, so the state is chosen by code (older addresses are mapped by name).
+  const [stateCode, setStateCode] = useState(initial?.stateCode || stateCodeFromName(initial?.state));
   const [pincode, setPincode] = useState(initial?.pincode ?? "");
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
 
@@ -122,7 +92,7 @@ function AddressForm({
     if (!city.trim()) {
       newErrors.city = "City is required";
     }
-    if (!state) {
+    if (!stateCode) {
       newErrors.state = "Please select a state";
     }
     if (!pincode.trim() || !/^\d{6}$/.test(pincode)) {
@@ -144,7 +114,7 @@ function AddressForm({
       village: village.trim() || undefined,
       city: city.trim(),
       district: district.trim() || undefined,
-      state,
+      stateCode,
       pincode: pincode.trim(),
     } satisfies Partial<CreateAddressPayload>;
 
@@ -286,16 +256,16 @@ function AddressForm({
           </label>
           <select
             id="state"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
+            value={stateCode}
+            onChange={(e) => setStateCode(e.target.value)}
             className={`w-full rounded-lg border px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 dark:text-gray-100 outline-none transition-all focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-2 dark:focus:ring-offset-gray-800 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20 dark:focus:ring-emerald-400/20 ${
               errors.state ? "border-red-400" : "border-gray-300 dark:border-gray-600 dark:border-gray-600"
             }`}
           >
             <option value="">Select state</option>
-            {STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {INDIAN_STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
               </option>
             ))}
           </select>
@@ -697,6 +667,7 @@ export default function AddressesPage() {
                 city: editingAddress.city,
                 district: editingAddress.district ?? "",
                 state: editingAddress.state,
+                stateCode: editingAddress.stateCode ?? "",
                 pincode: editingAddress.pincode,
                 isDefault: editingAddress.isDefault,
               }}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useOrderStore } from "@/stores/orderStore";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import {
   Package,
   ChevronDown,
@@ -488,9 +489,7 @@ function OrderCard({
           </p>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
             <span>{order.paymentMethod}</span>
-            {order._count.shipments > 0 && (
-              <span>{order._count.shipments} shipment{order._count.shipments > 1 ? "s" : ""}</span>
-            )}
+            {(order.subOrders?.length ?? 0) > 1 && <span>{order.subOrders!.length} sellers</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -510,7 +509,7 @@ function OrderCard({
             {RETURNABLE_STATUSES.includes(order.status) && (
               <button
                 onClick={onReturn}
-                title="Request return"
+                title="Return items (opens the order)"
                 className="rounded-lg p-1.5 text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 transition-colors hover:bg-orange-50 dark:bg-orange-900/30 hover:text-orange-600"
               >
                 <RotateCcw size={15} />
@@ -606,8 +605,8 @@ export default function OrdersPage() {
     isLoading,
     fetchOrders,
     cancelOrder,
-    returnOrder,
   } = useOrderStore();
+  const router = useRouter();
 
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
@@ -645,24 +644,10 @@ export default function OrdersPage() {
       await cancelOrder(actionTarget.order.id, reason);
       toast.success("Order cancelled successfully");
       setActionTarget(null);
+      await loadOrders(currentPage, statusFilter);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { message?: string } } };
       toast.error(axiosError.response?.data?.message ?? "Failed to cancel order");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleReturn = async (reason: string) => {
-    if (!actionTarget) return;
-    setIsProcessing(true);
-    try {
-      await returnOrder(actionTarget.order.id, reason);
-      toast.success("Return request submitted");
-      setActionTarget(null);
-    } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      toast.error(axiosError.response?.data?.message ?? "Failed to request return");
     } finally {
       setIsProcessing(false);
     }
@@ -732,7 +717,7 @@ export default function OrdersPage() {
                   order={order}
                   onViewDetail={() => setDetailOrderId(order.id)}
                   onCancel={() => setActionTarget({ type: "cancel", order })}
-                  onReturn={() => setActionTarget({ type: "return", order })}
+                  onReturn={() => router.push(`/dashboard/orders/${order.id}`)}
                 />
               ))}
 
@@ -796,7 +781,7 @@ export default function OrdersPage() {
         <ActionModal
           type={actionTarget.type}
           order={actionTarget.order}
-          onConfirm={actionTarget.type === "cancel" ? handleCancel : handleReturn}
+          onConfirm={handleCancel}
           onCancel={() => setActionTarget(null)}
           isProcessing={isProcessing}
         />

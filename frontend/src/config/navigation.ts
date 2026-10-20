@@ -116,6 +116,12 @@ export const navigationConfig: NavItem[] = [
     roles: ["VENDOR"],
   },
   {
+    label: "Returns",
+    href: "/dashboard/vendor/returns",
+    icon: "RotateCcw" as unknown as LucideIcon,
+    roles: ["VENDOR"],
+  },
+  {
     label: "Commissions",
     href: "/dashboard/vendor/commissions",
     icon: "Percent" as unknown as LucideIcon,

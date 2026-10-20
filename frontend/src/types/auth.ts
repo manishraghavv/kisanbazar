@@ -39,6 +39,9 @@ export interface VendorProfile {
   businessName: string;
   gstNumber?: string | null;
   panNumber?: string | null;
+  /** seller GST state code (first two digits of the GSTIN) */
+  stateCode?: string | null;
+  businessAddress?: string | null;
   kycStatus?: string;
   commissionRate: number;
   tier?: string | null;
@@ -58,6 +61,8 @@ export interface Address {
   city: string;
   district: string | null;
   state: string;
+  /** GST state code ("09" = Uttar Pradesh); decides CGST+SGST vs IGST */
+  stateCode?: string | null;
   pincode: string;
   geoLat: number | null;
   geoLng: number | null;
@@ -73,7 +78,9 @@ export interface CreateAddressPayload {
   village?: string;
   city: string;
   district?: string;
-  state: string;
+  /** GST state code - required; the state name is derived from it */
+  stateCode: string;
+  state?: string;
   pincode: string;
   isDefault?: boolean;
 }
@@ -86,6 +93,7 @@ export interface UpdateAddressPayload {
   city?: string;
   district?: string;
   state?: string;
+  stateCode?: string;
   pincode?: string;
   isDefault?: boolean;
 }
@@ -130,13 +138,29 @@ export interface OrderListItem {
     phoneNumber: string;
   };
   items: OrderItem[];
-  _count: {
-    shipments: number;
+  /** One entry per vendor (see SubOrder); list responses carry a light version */
+  subOrders?: SubOrderSummary[];
+  placeOfSupply?: string | null;
+  taxableValue?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  _count?: {
+    shipments?: number;
     payments: number;
   };
 }
 
-export interface OrderDetail extends Omit<OrderListItem, '_count'> {
+export interface SubOrderSummary {
+  id: string;
+  subOrderNumber: string;
+  status: OrderStatus;
+  totalAmount: number;
+  vendor: { id: string; businessName: string };
+}
+
+export interface OrderDetail extends Omit<OrderListItem, '_count' | 'subOrders'> {
+  subOrders: SubOrder[];
   addressId: string;
   couponCode?: string | null;
   khataAccountId?: string | null;
@@ -725,4 +749,153 @@ export interface RegisterResponse {
   userId: string;
   phoneNumber: string;
   role: UserRole;
+}
+
+// ─── Sub-orders (one per vendor), invoices, returns, quote ───────────────────
+
+export interface SubOrderItem {
+  id: string;
+  quantity: number;
+  unitPrice: number;
+  gstRate?: number;
+  hsnCode?: string | null;
+  discountAmount?: number;
+  taxableValue?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  returnedQuantity?: number;
+  variant: {
+    id?: string;
+    sku: string;
+    variantName: string | null;
+    product: { id?: string; name: string; slug?: string };
+  };
+}
+
+export interface SubOrderShipment {
+  id: string;
+  logisticsPartner?: string | null;
+  awbNumber?: string | null;
+  currentStatus?: string | null;
+  deliveryEta?: string | null;
+  events: Array<{ id: string; eventStatus: string; location?: string | null; eventTime: string }>;
+}
+
+export interface InvoiceSummary {
+  id: string;
+  invoiceNumber: string;
+  type: "TAX_INVOICE" | "CREDIT_NOTE";
+  issuedAt: string;
+  totalAmount: number;
+}
+
+export type ReturnStatus = "REQUESTED" | "APPROVED" | "RECEIVED" | "REFUNDED" | "CREDITED" | "REJECTED";
+
+export interface ReturnRecord {
+  id: string;
+  orderId: string;
+  subOrderId: string | null;
+  status: ReturnStatus;
+  reason: string;
+  vendorNote?: string | null;
+  refundAmount?: number | null;
+  resolution?: string | null;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    orderItemId: string;
+    quantity: number;
+    orderItem?: { variant: { variantName: string | null; product: { name: string } } };
+  }>;
+  creditNote?: { id: string; invoiceNumber: string; totalAmount: number } | null;
+  subOrder?: { id: string; subOrderNumber: string; vendorId: string; status: OrderStatus; vendor: { businessName: string } } | null;
+}
+
+export interface SubOrder {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  subOrderNumber: string;
+  status: OrderStatus;
+  isInterState: boolean;
+  placeOfSupply?: string | null;
+  sellerStateCode?: string | null;
+  subtotal: number;
+  discountAmount: number;
+  taxableValue: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  gstAmount: number;
+  deliveryCharge: number;
+  totalAmount: number;
+  deliveredAt?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
+  vendor: { id: string; businessName: string; gstNumber?: string | null; stateCode?: string | null };
+  items: SubOrderItem[];
+  shipments: SubOrderShipment[];
+  invoices: InvoiceSummary[];
+  returns: ReturnRecord[];
+  /** present on /sub-orders list/detail responses */
+  order?: {
+    id: string;
+    orderNumber: string;
+    paymentMethod: string;
+    createdAt: string;
+    user?: { id: string; fullName: string; phoneNumber: string };
+    address?: Address;
+  };
+}
+
+export interface QuoteLine {
+  variantId: string;
+  name: string;
+  variantName: string | null;
+  quantity: number;
+  unitPrice: number | string;
+  lineTotal: number | string;
+  discount: number | string;
+  taxableValue: number | string;
+  gstRate: number | string;
+  hsnCode: string | null;
+  cgst: number | string;
+  sgst: number | string;
+  igst: number | string;
+}
+
+export interface QuoteSubOrder {
+  vendorId: string;
+  vendorName: string;
+  sellerStateCode: string;
+  interState: boolean;
+  subtotal: number | string;
+  discountAmount: number | string;
+  taxableValue: number | string;
+  cgstAmount: number | string;
+  sgstAmount: number | string;
+  igstAmount: number | string;
+  gstAmount: number | string;
+  deliveryCharge: number | string;
+  totalAmount: number | string;
+  khata: { accountId: string; usable: boolean; available: number | string } | null;
+  lines: QuoteLine[];
+}
+
+export interface OrderQuote {
+  placeOfSupply: string;
+  couponCode: string | null;
+  subOrders: QuoteSubOrder[];
+  totals: {
+    subtotal: number | string;
+    discountAmount: number | string;
+    taxableValue: number | string;
+    cgstAmount: number | string;
+    sgstAmount: number | string;
+    igstAmount: number | string;
+    gstAmount: number | string;
+    deliveryCharge: number | string;
+    totalAmount: number | string;
+  };
 }

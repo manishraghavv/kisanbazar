@@ -6,7 +6,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useCartStore } from "@/stores/cartStore";
 import { useAddressStore } from "@/stores/addressStore";
-import { useKhataStore } from "@/stores/khataStore";
 import apiClient from "@/lib/api-client";
 import {
   ShoppingBag,
@@ -28,7 +27,9 @@ import {
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { apiErrorMessage, runCheckout, verifyPayment, type GatewayDetails } from "@/lib/razorpay";
 import { useAuthStore } from "@/stores/authStore";
-import type { CouponItem } from "@/types/auth";
+import type { CouponItem, OrderQuote } from "@/types/auth";
+import { formatRupees, isZero } from "@/lib/money";
+import { stateNameFromCode } from "@/lib/indianStates";
 
 // ─── Payment methods ─────────────────────────────────────────────────────────
 
@@ -178,12 +179,12 @@ export default function CheckoutPage() {
     isLoading: addressesLoading,
     fetchAddresses,
   } = useAddressStore();
-  const { accounts: khataAccounts, getAccounts } = useKhataStore();
 
   const [step, setStep] = useState<CheckoutStep>("review");
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("COD");
-  const [selectedKhataId, setSelectedKhataId] = useState<string | null>(null);
+  const [quote, setQuote] = useState<OrderQuote | null>(null);
+  const [quoteError, setQuoteError] = useState("");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [placedOrderNumber, setPlacedOrderNumber] = useState("");
   const [placedOrderId, setPlacedOrderId] = useState("");
@@ -203,8 +204,7 @@ export default function CheckoutPage() {
       router.push("/dashboard/cart");
     });
     fetchAddresses(1, 50).catch(() => {});
-    getAccounts(1, 50, "ACTIVE").catch(() => {});
-  }, [getCart, fetchAddresses, getAccounts, router]);
+  }, [getCart, fetchAddresses, router]);
 
   // Auto-select default address
   useEffect(() => {
@@ -236,15 +236,48 @@ export default function CheckoutPage() {
     return 0;
   }, [appliedCoupon, subtotal]);
 
-  // Display estimate only: the server computes the authoritative delivery charge (same rule).
-  const deliveryCharge = subtotal >= 500 || appliedCoupon?.type === "FREE_DELIVERY" ? 0 : 40;
-  const total = Math.max(0, subtotal - discountAmount + deliveryCharge);
+  // The server quote (per-seller split, GST, delivery) is authoritative. The local numbers below are only a
+  // rough fallback shown before an address is chosen; they ignore GST and per-seller delivery.
+  const fallbackDelivery = subtotal >= 500 || appliedCoupon?.type === "FREE_DELIVERY" ? 0 : 40;
+  const deliveryCharge = quote ? Number(quote.totals.deliveryCharge) : fallbackDelivery;
+  const total = quote ? Number(quote.totals.totalAmount) : Math.max(0, subtotal - discountAmount + fallbackDelivery);
+  const quoteDiscount = quote ? Number(quote.totals.discountAmount) : discountAmount;
+  const khataReady = !!quote && quote.subOrders.every((so) => so.khata?.usable);
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
   const canPlaceOrder =
     !!selectedAddressId &&
     items.length > 0 &&
-    (paymentMethod !== "KHATA_CREDIT" || !!selectedKhataId);
+    !!quote &&
+    (paymentMethod !== "KHATA_CREDIT" || khataReady);
+
+  // Fetch the quote whenever the address or coupon changes.
+  useEffect(() => {
+    if (!selectedAddressId || items.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    apiClient
+      .post<{ success: boolean; data: OrderQuote }>("/orders/quote", {
+        addressId: selectedAddressId,
+        couponCode: appliedCoupon?.code || undefined,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setQuote(res.data.data);
+        setQuoteError("");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setQuote(null);
+        setQuoteError(apiErrorMessage(err, "Could not price this order"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAddressId, appliedCoupon, items.length]);
 
   // ── Coupon handlers ──
 
@@ -333,7 +366,6 @@ export default function CheckoutPage() {
       const order = await createOrder({
         addressId: selectedAddressId!,
         paymentMethod,
-        khataAccountId: paymentMethod === "KHATA_CREDIT" ? selectedKhataId : null,
         couponCode: appliedCoupon?.code || undefined,
       });
       setPlacedOrderNumber(order.orderNumber);
@@ -470,49 +502,59 @@ export default function CheckoutPage() {
       <div className="grid gap-6 lg:grid-cols-5">
         {/* ── Left: Main Content ── */}
         <div className="space-y-5 lg:col-span-3">
-          {/* Step 1: Cart Review */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 dark:border-gray-700 bg-white dark:bg-gray-800 dark:bg-gray-800 shadow-sm dark:shadow-gray-950/30">
-            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 dark:border-gray-700 px-5 py-4">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">
-                Order Items ({items.length})
-              </h3>
-              <Link
-                href="/dashboard/cart"
-                className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300"
-              >
+          {/* Step 1: Cart review, split by seller with the GST breakup */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Order Items ({items.length})</h3>
+              <Link href="/dashboard/cart" className="text-xs font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-400">
                 Edit Cart
               </Link>
             </div>
-            <div className="divide-y divide-gray-50">
-              {items.map((item) => {
-                const imageUrl = item.variant.product.images[0]?.imageUrl;
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 px-5 py-3"
-                  >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-50 dark:bg-gray-700/50 dark:bg-gray-700/50">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <Package size={18} className="text-gray-300" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100 line-clamp-1">
-                        {item.variant.product.name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                        {item.variant.variantName ?? "Default"} × {item.quantity}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-sm font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">
-                      {formatCurrency(item.variant.sellingPrice * item.quantity)}
-                    </p>
+            {quoteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{quoteError}</p>}
+            {!quote && !quoteError && (
+              <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-700/50 dark:text-gray-300">
+                Choose a delivery address to see the price split by seller, with GST and delivery.
+              </p>
+            )}
+            {quote?.subOrders.map((so) => (
+              <div key={so.vendorId} className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-3 dark:border-gray-700">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Sold by</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{so.vendorName}</p>
                   </div>
-                );
-              })}
-            </div>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {so.interState
+                      ? `IGST · ships from ${stateNameFromCode(so.sellerStateCode)}`
+                      : `CGST + SGST · same state (${stateNameFromCode(so.sellerStateCode)})`}
+                  </span>
+                </div>
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {so.lines.map((l) => (
+                    <div key={l.variantId} className="flex items-center gap-3 px-5 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{l.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {l.variantName ?? "Default"} × {l.quantity} · GST {Number(l.gstRate)}%
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-bold text-gray-900 dark:text-gray-100">{formatRupees(l.lineTotal)}</p>
+                    </div>
+                  ))}
+                </div>
+                <dl className="space-y-1 border-t border-gray-100 px-5 py-3 text-xs dark:border-gray-700">
+                  {!isZero(so.discountAmount) && (
+                    <div className="flex justify-between"><dt className="text-gray-500">Coupon discount</dt><dd className="font-medium text-emerald-700 dark:text-emerald-400">−{formatRupees(so.discountAmount)}</dd></div>
+                  )}
+                  <div className="flex justify-between"><dt className="text-gray-500">Taxable value</dt><dd>{formatRupees(so.taxableValue)}</dd></div>
+                  {!isZero(so.cgstAmount) && <div className="flex justify-between"><dt className="text-gray-500">CGST</dt><dd>{formatRupees(so.cgstAmount)}</dd></div>}
+                  {!isZero(so.sgstAmount) && <div className="flex justify-between"><dt className="text-gray-500">SGST</dt><dd>{formatRupees(so.sgstAmount)}</dd></div>}
+                  {!isZero(so.igstAmount) && <div className="flex justify-between"><dt className="text-gray-500">IGST</dt><dd>{formatRupees(so.igstAmount)}</dd></div>}
+                  <div className="flex justify-between"><dt className="text-gray-500">Delivery</dt><dd>{isZero(so.deliveryCharge) ? "Free" : formatRupees(so.deliveryCharge)}</dd></div>
+                  <div className="flex justify-between border-t border-gray-100 pt-1.5 text-sm font-bold dark:border-gray-700"><dt>This seller&apos;s total</dt><dd>{formatRupees(so.totalAmount)}</dd></div>
+                </dl>
+              </div>
+            ))}
           </div>
 
           {/* Step 2: Delivery Address */}
@@ -662,8 +704,8 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 dark:text-gray-300">
                   <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
                   <span>{PAYMENT_METHODS.find((m) => m.value === paymentMethod)?.label ?? paymentMethod}</span>
-                  {paymentMethod === "KHATA_CREDIT" && selectedKhataId && (
-                    <span className="text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">· Khata selected</span>
+                  {paymentMethod === "KHATA_CREDIT" && khataReady && (
+                    <span className="text-gray-400 dark:text-gray-500">· one khata per seller</span>
                   )}
                 </div>
               </div>
@@ -675,18 +717,11 @@ export default function CheckoutPage() {
                     const selected = paymentMethod === method.value;
                     const needsKhata = method.requiresKhata;
 
-                    const activeKhataAccounts = khataAccounts.filter(
-                      (a) => a.status === "ACTIVE",
-                    );
-
                     return (
                       <div key={method.value}>
                         <button
                           onClick={() => {
                             setPaymentMethod(method.value);
-                            if (!needsKhata) {
-                              setSelectedKhataId(null);
-                            }
                           }}
                           className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                             selected
@@ -712,38 +747,39 @@ export default function CheckoutPage() {
                           </div>
                         </button>
 
-                        {/* Khata account selector */}
+                        {/* Khata: each seller's own account is charged for that seller's part */}
                         {selected && needsKhata && (
                           <div className="ml-8 mt-2 space-y-1.5">
-                            {activeKhataAccounts.length === 0 ? (
-                              <p className="text-xs text-amber-600 dark:text-amber-400 italic">
-                                No active khata accounts available
-                              </p>
+                            {!quote ? (
+                              <p className="text-xs italic text-amber-600 dark:text-amber-400">Choose a delivery address to see your khata with each seller</p>
                             ) : (
-                              activeKhataAccounts.map((khata) => {
-                                const khataSelected = selectedKhataId === khata.id;
-                                return (
-                                  <button
-                                    key={khata.id}
-                                    onClick={() => setSelectedKhataId(khata.id)}
-                                    className={`flex w-full items-center justify-between rounded-lg border p-2.5 text-xs transition-all ${
-                                      khataSelected
-                                        ? "border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 dark:bg-emerald-900/30"
-                                        : "border-gray-200 dark:border-gray-700 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500 dark:border-gray-600"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <BookOpen size={13} className="text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
-                                      <span>
-                                        {khata.farmer?.user.fullName ?? khata.id.slice(0, 8)}
-                                      </span>
-                                    </div>
-                                    <span className="font-medium text-gray-900 dark:text-gray-100 dark:text-gray-100">
-                                      {formatCurrency(khata.outstandingAmount)} outstanding
-                                    </span>
-                                  </button>
-                                );
-                              })
+                              quote.subOrders.map((so) => (
+                                <div
+                                  key={so.vendorId}
+                                  className={`flex items-center justify-between rounded-lg border p-2.5 text-xs ${
+                                    so.khata?.usable
+                                      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"
+                                      : "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20"
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <BookOpen size={13} />
+                                    {so.vendorName}
+                                  </span>
+                                  <span className="font-medium">
+                                    {!so.khata
+                                      ? "No khata account"
+                                      : !so.khata.usable
+                                        ? "Khata not active"
+                                        : `${formatRupees(so.khata.available)} available · this part ${formatRupees(so.totalAmount)}`}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                            {quote && !khataReady && (
+                              <p className="text-xs text-amber-700 dark:text-amber-400">
+                                Khata needs an active account with every seller in this order. Pick another method or split your cart.
+                              </p>
                             )}
                           </div>
                         )}
@@ -828,38 +864,33 @@ export default function CheckoutPage() {
 
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-300 dark:text-gray-300">
-                    Subtotal ({items.length} item{items.length !== 1 ? "s" : ""})
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100 dark:text-gray-100">{formatCurrency(subtotal)}</span>
+                  <span className="text-gray-600 dark:text-gray-300">Subtotal ({items.length} item{items.length !== 1 ? "s" : ""})</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{formatRupees(quote ? quote.totals.subtotal : subtotal)}</span>
                 </div>
-
-                {discountAmount > 0 && (
+                {quoteDiscount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-300 dark:text-gray-300">Discount</span>
-                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                      -{formatCurrency(discountAmount)}
-                    </span>
+                    <span className="text-gray-600 dark:text-gray-300">Discount</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">−{formatRupees(quoteDiscount)}</span>
                   </div>
                 )}
-
+                {quote && !isZero(quote.totals.cgstAmount) && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-600 dark:text-gray-300">CGST</span><span className="font-medium">{formatRupees(quote.totals.cgstAmount)}</span></div>
+                )}
+                {quote && !isZero(quote.totals.sgstAmount) && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-600 dark:text-gray-300">SGST</span><span className="font-medium">{formatRupees(quote.totals.sgstAmount)}</span></div>
+                )}
+                {quote && !isZero(quote.totals.igstAmount) && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-600 dark:text-gray-300">IGST</span><span className="font-medium">{formatRupees(quote.totals.igstAmount)}</span></div>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-300 dark:text-gray-300">Delivery</span>
-                  <span
-                    className={`font-medium ${
-                      deliveryCharge === 0 ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100 dark:text-gray-100"
-                    }`}
-                  >
-                    {deliveryCharge === 0 ? "Free" : formatCurrency(deliveryCharge)}
+                  <span className="text-gray-600 dark:text-gray-300">Delivery</span>
+                  <span className={`font-medium ${deliveryCharge === 0 ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100"}`}>
+                    {deliveryCharge === 0 ? "Free" : formatRupees(deliveryCharge)}
                   </span>
                 </div>
-
-                {deliveryCharge > 0 && (
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
-                    Free delivery on orders above ₹500
-                  </p>
+                {quote && quote.subOrders.length > 1 && (
+                  <p className="text-[10px] text-gray-400">Delivery is charged per seller (free per seller above ₹500).</p>
                 )}
-
                 <div className="border-t border-gray-100 dark:border-gray-700 dark:border-gray-700 pt-3">
                   <div className="flex justify-between text-base font-bold">
                     <span className="text-gray-900 dark:text-gray-100 dark:text-gray-100">Total</span>

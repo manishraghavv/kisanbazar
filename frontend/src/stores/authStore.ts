@@ -62,6 +62,8 @@ interface AuthActions {
     businessName?: string;
     gstNumber?: string;
     panNumber?: string;
+    stateCode?: string;
+    businessAddress?: string;
   }) => Promise<void>;
   /** Update farmer-specific profile (village, land, crops, etc.). Throws on failure. */
   updateFarmerProfile: (data: {
@@ -254,6 +256,8 @@ export const useAuthStore = create<AuthStore>()(
         businessName?: string;
         gstNumber?: string;
         panNumber?: string;
+        stateCode?: string;
+        businessAddress?: string;
       }) => {
         await apiClient.put<{
           success: boolean;

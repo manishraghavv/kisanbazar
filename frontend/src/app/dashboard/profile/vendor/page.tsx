@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { INDIAN_STATES } from "@/lib/indianStates";
 import { useAuthStore } from "@/stores/authStore";
 import { toast } from "sonner";
 import {
@@ -82,6 +83,8 @@ export default function VendorProfilePage() {
   const [businessName, setBusinessName] = useState(vp?.businessName ?? "");
   const [gstNumber, setGstNumber] = useState(vp?.gstNumber ?? "");
   const [panNumber, setPanNumber] = useState(vp?.panNumber ?? "");
+  const [stateCode, setStateCode] = useState(vp?.stateCode ?? "");
+  const [businessAddress, setBusinessAddress] = useState(vp?.businessAddress ?? "");
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -98,6 +101,16 @@ export default function VendorProfilePage() {
       return;
     }
 
+    // The GSTIN starts with the seller's GST state code; the two must agree (the invoice depends on it).
+    if (gst && stateCode && gst.slice(0, 2) !== stateCode) {
+      toast.error("The GST number does not belong to the selected state");
+      return;
+    }
+    if (!gst && !stateCode) {
+      toast.error("Select your state: it decides whether buyers are charged CGST+SGST or IGST");
+      return;
+    }
+
     // Basic PAN validation (10 chars: 5 letters + 4 digits + 1 letter)
     const pan = panNumber.trim().toUpperCase();
     if (pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) {
@@ -111,6 +124,8 @@ export default function VendorProfilePage() {
         businessName: businessName.trim(),
         gstNumber: gst || undefined,
         panNumber: pan || undefined,
+        stateCode: stateCode || undefined,
+        businessAddress: businessAddress.trim() || undefined,
       });
       toast.success("Vendor profile updated successfully");
     } catch (err: unknown) {
@@ -222,6 +237,42 @@ export default function VendorProfilePage() {
                 onChange={(e) => setBusinessName(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-600 dark:border-gray-600 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 dark:text-gray-100 outline-none transition-all focus:border-blue-500 focus:ring-2 dark:focus:ring-offset-gray-800 focus:ring-blue-500/20"
                 placeholder="Your business name"
+              />
+            </div>
+
+            {/* GST state + business address (printed on invoices) */}
+            <div>
+              <label htmlFor="stateCode" className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+                State (GST registration)
+              </label>
+              <select
+                id="stateCode"
+                value={stateCode}
+                onChange={(e) => setStateCode(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              >
+                <option value="">Select state</option>
+                {INDIAN_STATES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Sales to buyers in this state carry CGST + SGST; sales to other states carry IGST.
+              </p>
+            </div>
+            <div>
+              <label htmlFor="businessAddress" className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Business address (shown on invoices)
+              </label>
+              <textarea
+                id="businessAddress"
+                value={businessAddress}
+                onChange={(e) => setBusinessAddress(e.target.value)}
+                rows={2}
+                className="w-full resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                placeholder="Shop no., street, city, state - pincode"
               />
             </div>
 

@@ -67,6 +67,7 @@ export default function OrderConfirmationPage() {
             addressId: "",
             address: {} as import("@/types/auth").Address,
             payments: [],
+            subOrders: [],
             shipments: [],
             statusHistory: [],
             returns: [],

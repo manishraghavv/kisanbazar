@@ -36,6 +36,7 @@ import {
   BarChart3,
   Bell,
   Settings,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -75,6 +76,7 @@ const iconMap: Record<string, LucideIcon> = {
   BarChart3,
   Bell,
   Settings,
+  RotateCcw,
   TrendingUp,
 };
 

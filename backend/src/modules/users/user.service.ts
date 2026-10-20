@@ -69,6 +69,8 @@ export class UserService {
             businessName: true,
             gstNumber: true,
             panNumber: true,
+            stateCode: true,
+            businessAddress: true,
             kycStatus: true,
             commissionRate: true,
             tier: true,
