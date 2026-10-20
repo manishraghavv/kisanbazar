@@ -1,10 +1,8 @@
-import { Prisma, EnterpriseSize, SettlementStatus } from '@prisma/client';
+import { Prisma, EnterpriseSize } from '@prisma/client';
 import { prisma } from '../../common/lib/prisma';
 import {
-  ForbiddenError,
   NotFoundError,
   ConflictError,
-  BadRequestError,
 } from '../../common/errors';
 
 export const EnterpriseService = {

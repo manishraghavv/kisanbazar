@@ -6,7 +6,7 @@ import { authenticate, authorize } from '../../common/middleware/authMiddleware'
 import { asyncHandler } from '../../common/middleware/asyncHandler';
 import { AuthRequest } from '../../common/types/express.d';
 import { prisma } from '../../common/lib/prisma';
-import { ConflictError, BadRequestError } from '../../common/errors';
+import { BadRequestError } from '../../common/errors';
 import { Prisma } from '@prisma/client';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });

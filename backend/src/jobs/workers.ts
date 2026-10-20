@@ -7,7 +7,6 @@
 
 import { Worker, Job } from 'bullmq';
 import { prisma } from '../common/lib/prisma';
-import { Prisma } from '@prisma/client';
 import Redis from 'ioredis';
 
 const REDIS_URL_PROCESS = process.env.REDIS_URL || process.env.REDIS_URL_QUEUES;
@@ -95,7 +94,7 @@ export async function startWorkers(): Promise<void> {
 
   workers = [
     createWorker('email', async (job: Job) => {
-      const { to, subject, body } = job.data;
+      const { to, subject } = job.data;
       console.log(`[WORKER] Sending email to ${to}: ${subject}`);
       console.log(`[WORKER] Email sent to ${to} — Subject: ${subject}`);
       return { sent: true, to, subject };
@@ -117,7 +116,7 @@ export async function startWorkers(): Promise<void> {
       return { sent: true, userId, title };
     }, { concurrency: 10 }),
 
-    createWorker('interest', async (job: Job) => {
+    createWorker('interest', async (_job: Job) => {
       const { runInterestCalculation } = await import('./cron');
       const result = await runInterestCalculation();
       console.log(`[WORKER] Interest calculation complete: ${result.processed} accounts processed`);

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../common/types/express.d';
 import { InvoiceService } from './order.service';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const archiver = require('archiver');
 
 function handleServiceError(err: unknown, res: Response): void {

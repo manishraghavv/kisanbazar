@@ -4,7 +4,6 @@ import {
   ForbiddenError,
   NotFoundError,
   ConflictError,
-  BadRequestError,
 } from '../../common/errors';
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -20,6 +20,7 @@ function getClient() {
     return null;
   }
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy-load: only needed when configured
     const { Resend } = require('resend');
     resendClient = new Resend(RESEND_API_KEY);
     return resendClient;

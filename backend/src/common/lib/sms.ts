@@ -22,6 +22,7 @@ function getClient() {
     return null;
   }
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy-load: only needed when configured
     const twilio = require('twilio');
     twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, { lazyLoading: true });
     return twilioClient;

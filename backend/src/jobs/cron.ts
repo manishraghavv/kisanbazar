@@ -8,7 +8,6 @@
  */
 
 import { prisma } from '../common/lib/prisma';
-import { Prisma } from '@prisma/client';
 import cron from 'node-cron';
 import { dispatch } from '../common/services/notification-dispatch';
 

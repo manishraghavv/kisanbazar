@@ -18,9 +18,6 @@ import {
   downloadBulkInvoices,
 } from '../orders/invoice.controller';
 import { CouponService } from '../payments/payment.service';
-import {
-  validateCouponSchema,
-} from '../payments/payment.validator';
 
 const router = Router();
 

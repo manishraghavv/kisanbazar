@@ -30,7 +30,7 @@ import { adminRouter, invoiceRouter, autoApplyCouponHandler } from './modules/ad
 import uploadRoutes from './modules/upload/upload.routes';
 import bulkImportRoutes from './modules/products/bulk-import.routes';
 import { handlePaymentWebhook } from './modules/payments/payment.webhook';
-import { autoApplyCouponSchema, validateCouponSchema } from './modules/payments/payment.validator';
+import { autoApplyCouponSchema } from './modules/payments/payment.validator';
 
 const app: Express = express();
 const httpServer = http.createServer(app);
